@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#0E1A2B">
-<title>Sightline – AR tag prototype</title>
+<title>Sightline – AR tag</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&display=swap" rel="stylesheet">
@@ -21,37 +21,29 @@
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
-    height: 100%;
-    background: #000;
-    color: var(--ink);
-    font-family: var(--font);
-    overflow: hidden;
-    touch-action: manipulation;
-    -webkit-user-select: none;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
+    height: 100%; background: #000; color: var(--ink); font-family: var(--font);
+    overflow: hidden; touch-action: manipulation;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
   }
   #stage { position: fixed; inset: 0; }
   video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
   video { object-fit: cover; }
 
-  /* HUD */
   .hud {
-    position: fixed; inset: 0; pointer-events: none;
-    padding: calc(env(safe-area-inset-top, 0px) + 12px) calc(env(safe-area-inset-right, 0px) + 14px)
-             calc(env(safe-area-inset-bottom, 0px) + 16px) calc(env(safe-area-inset-left, 0px) + 14px);
-    display: none;
+    position: fixed; inset: 0; pointer-events: none; display: none;
+    padding: calc(env(safe-area-inset-top, 0px) + 12px) calc(env(safe-area-inset-right, 0px) + 14px) 0 calc(env(safe-area-inset-left, 0px) + 14px);
   }
   .hud.on { display: block; }
   .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-  .chip {
-    background: var(--panel); border-radius: 10px; padding: 8px 12px;
-    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-  }
-  .score { display: flex; gap: 16px; }
-  .stat b { display: block; font-size: 24px; line-height: 1; font-weight: 700; }
-  .stat span { font-size: 12px; color: var(--muted); }
-  #status { font-size: 14px; color: var(--muted); text-align: center; align-self: center; }
+  .chip { background: var(--panel); border-radius: 10px; padding: 8px 12px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  .me { min-width: 150px; }
+  .me .row { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-bottom: 5px; gap: 12px; }
+  .me .row b { color: var(--ink); font-size: 15px; }
+  .hpbar { height: 8px; background: rgba(255,255,255,0.15); border-radius: 4px; overflow: hidden; }
+  .hpbar i { display: block; height: 100%; width: 100%; background: var(--ok); transition: width 0.2s; }
+  #status { font-size: 13px; color: var(--muted); text-align: center; line-height: 1.35; }
+  #status b { color: var(--ink); }
+  #status .warn { color: var(--amber); }
   .btn {
     pointer-events: auto; border: 0; font-family: inherit; color: var(--ink);
     background: var(--panel); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-weight: 500;
@@ -59,8 +51,7 @@
   }
   .btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
   .bottom {
-    position: absolute; left: 0; right: 0;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+    position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
     padding: 0 calc(env(safe-area-inset-right, 0px) + 16px) 0 calc(env(safe-area-inset-left, 0px) + 16px);
     display: flex; justify-content: space-between; align-items: flex-end;
   }
@@ -72,43 +63,58 @@
     pointer-events: auto; width: 96px; height: 96px; border-radius: 50%;
     border: 3px solid rgba(255, 255, 255, 0.85);
     background: radial-gradient(circle at 50% 45%, rgba(255, 59, 78, 0.9), rgba(160, 20, 35, 0.9));
-    color: #fff; font-family: inherit; font-weight: 700; font-size: 16px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+    color: #fff; font-family: inherit; font-weight: 700; font-size: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.45);
   }
   #fire:active { transform: scale(0.94); }
-  #fire:focus-visible { outline: 3px solid var(--amber); outline-offset: 3px; }
+  #fire:disabled { filter: grayscale(1); opacity: 0.6; }
 
   #banner {
-    position: fixed; left: 50%; top: 22%; transform: translate(-50%, -10px);
-    background: var(--hit); color: #fff; font-weight: 700; font-size: 22px;
-    padding: 10px 20px; border-radius: 10px; opacity: 0; pointer-events: none;
+    position: fixed; left: 50%; top: 24%; transform: translate(-50%, -10px);
+    background: var(--hit); color: #fff; font-weight: 700; font-size: 20px;
+    padding: 10px 18px; border-radius: 10px; opacity: 0; pointer-events: none;
     transition: opacity 0.18s, transform 0.18s; white-space: nowrap;
   }
   #banner.show { opacity: 1; transform: translate(-50%, 0); }
+  #hurt { position: fixed; inset: 0; pointer-events: none; box-shadow: inset 0 0 120px 40px rgba(255,59,78,0.85); opacity: 0; transition: opacity 0.35s; }
+  #hurt.show { opacity: 1; transition: none; }
+  #dead {
+    position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column;
+    background: rgba(40, 6, 12, 0.55); pointer-events: none; text-align: center; gap: 6px;
+  }
+  #dead.on { display: flex; }
+  #dead b { font-size: 34px; }
+  #dead span { color: var(--muted); font-size: 16px; }
 
-  /* Start screen */
+  /* Lobby */
   #start {
-    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; overflow-y: auto;
     background: var(--panel-solid);
     padding: calc(env(safe-area-inset-top, 0px) + 24px) 24px calc(env(safe-area-inset-bottom, 0px) + 24px);
   }
   .card { max-width: 420px; width: 100%; }
   .card h1 { font-size: 44px; font-weight: 700; line-height: 1.05; margin-bottom: 14px; }
   .card h1 i { font-style: normal; color: var(--amber); }
-  .card p { color: var(--muted); font-size: 16px; line-height: 1.5; margin-bottom: 12px; }
-  .zones { display: flex; gap: 10px; margin: 18px 0 24px; }
-  .zone { flex: 1; border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; padding: 10px; }
-  .zone b { display: block; font-size: 22px; color: var(--amber); }
-  .zone span { font-size: 13px; color: var(--muted); }
-  #go {
-    width: 100%; border: 0; border-radius: 12px; padding: 16px; font-family: inherit;
+  .card p { color: var(--muted); font-size: 15px; line-height: 1.5; margin-bottom: 12px; }
+  label { display: block; font-size: 14px; color: var(--muted); margin: 14px 0 6px; }
+  input {
+    width: 100%; font-family: inherit; font-size: 18px; color: var(--ink); background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.18); border-radius: 10px; padding: 12px 14px;
+  }
+  input:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+  #room { text-transform: uppercase; letter-spacing: 0.15em; }
+  .primary {
+    width: 100%; border: 0; border-radius: 12px; padding: 16px; margin-top: 20px; font-family: inherit;
     font-size: 18px; font-weight: 700; background: var(--amber); color: #1A1204;
   }
-  #go:disabled { opacity: 0.6; }
-  #go:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
-  #msg { margin-top: 14px; font-size: 14px; color: var(--muted); min-height: 1.4em; }
+  .secondary {
+    width: 100%; border: 1px solid rgba(255,255,255,0.22); border-radius: 12px; padding: 14px; margin-top: 10px;
+    font-family: inherit; font-size: 16px; font-weight: 500; background: transparent; color: var(--ink);
+  }
+  .primary:disabled, .secondary:disabled { opacity: 0.55; }
+  .primary:focus-visible, .secondary:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+  #msg { margin-top: 14px; font-size: 14px; color: var(--muted); min-height: 1.4em; line-height: 1.45; }
   #msg.err { color: var(--hit); }
-  @media (prefers-reduced-motion: reduce) { #banner { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { #banner, #hurt, .hpbar i { transition: none; } }
 </style>
 </head>
 <body>
@@ -119,11 +125,12 @@
 
 <div class="hud" id="hud">
   <div class="top">
-    <div class="chip score">
-      <div class="stat"><b id="kills">0</b><span>Eliminations</span></div>
-      <div class="stat"><b id="hits">0</b><span>Hits</span></div>
+    <div class="chip me">
+      <div class="row"><span id="myName">You</span><b id="myHp">100</b></div>
+      <div class="hpbar"><i id="myHpBar"></i></div>
+      <div class="row" style="margin: 6px 0 0"><span>Eliminations</span><b id="kills">0</b></div>
     </div>
-    <div id="status" class="chip">Looking for players…</div>
+    <div id="status" class="chip">Starting…</div>
     <button class="btn" id="toggleBoxes" type="button">Hide hitboxes</button>
   </div>
   <div class="bottom">
@@ -135,85 +142,112 @@
   </div>
 </div>
 
+<div id="hurt"></div>
+<div id="dead"><b>You're out</b><span id="deadText">Back in 3s</span></div>
 <div id="banner"></div>
 
 <div id="start">
   <div class="card">
     <h1>Sightline<br><i>AR tag</i></h1>
-    <p>Point your back camera at a friend, line them up with the crosshair, and hit Fire. Tapping anywhere on the screen also fires.</p>
-    <div class="zones">
-      <div class="zone"><b>50</b><span>Head</span></div>
-      <div class="zone"><b>25</b><span>Body</span></div>
-      <div class="zone"><b>12</b><span>Arms and legs</span></div>
-    </div>
-    <p>Each player has 100 health and comes back 3 seconds after being eliminated. Works best when the whole body is in frame.</p>
-    <button id="go" type="button">Start camera</button>
+    <p>Everyone joins the same room code on their own phone. Only players in your room get nametags and can be hit, matched by GPS and compass. Play outdoors, spread out at least 10 meters.</p>
+    <label for="name">Your name</label>
+    <input id="name" maxlength="16" autocomplete="nickname" placeholder="e.g. Cesar">
+    <label for="room">Room code</label>
+    <input id="room" maxlength="6" autocomplete="off" placeholder="ABCD">
+    <button id="join" class="primary" type="button">Join match</button>
+    <button id="practice" class="secondary" type="button">Practice offline (everyone is a target)</button>
     <div id="msg" role="status"></div>
   </div>
 </div>
 
 <script type="module">
-const MP_VERSION = "0.10.14";
-const MP_BASE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}`;
-const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+/* =====================================================================
+   1. PASTE YOUR FIREBASE CONFIG HERE (see setup steps)
+   ===================================================================== */
+const firebaseConfig = {
+  apiKey: "AIzaSyCpR0i-hWnJzuZxVk8IcDa0haMDrBOXDEE",
+  authDomain: "sightline-56bc7.firebaseapp.com",
+  databaseURL: "https://sightline-56bc7-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "sightline-56bc7",
+  storageBucket: "sightline-56bc7.firebasestorage.app",
+  messagingSenderId: "838477752870",
+  appId: "1:838477752870:web:f358c75004d633335794e7"
+};
+const ONLINE_READY = !!firebaseConfig.databaseURL && !firebaseConfig.databaseURL.includes("YOUR-PROJECT");
 
+/* ---------- tuning ---------- */
+const MP_BASE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+const FB_BASE = "https://www.gstatic.com/firebasejs/10.12.2/";
 const DAMAGE = { head: 50, torso: 25, limb: 12 };
 const ZONE_RANK = { head: 3, torso: 2, limb: 1 };
-const MAX_HP = 100;
-const MAG_SIZE = 12;
-const FIRE_DELAY = 180;     // ms between shots
-const RELOAD_TIME = 1500;   // ms
-const RESPAWN_TIME = 3000;  // ms
-const FORGET_AFTER = 2000;  // ms a target is kept after leaving view
+const MAX_HP = 100, MAG_SIZE = 12, FIRE_DELAY = 180, RELOAD_TIME = 1500, RESPAWN_TIME = 3000;
+const FORGET_AFTER = 2000;
+const CAMERA_LONG_FOV = 65;   // degrees across the long side of a typical phone main camera
+const COMPASS_TOL = 15;       // degrees of compass error we allow
+const STALE_POS = 15000;      // ms before another player's GPS is considered too old
 
 const $ = (id) => document.getElementById(id);
-const video = $("cam"), canvas = $("fx"), ctx = canvas.getContext("2d");
-const goBtn = $("go"), msg = $("msg");
+const video = $("cam"), canvas = $("fx"), ctx = canvas.getContext("2d"), msg = $("msg");
 
+let mode = null;              // "online" | "practice"
 let landmarker = null;
-let W = 0, H = 0, DPR = 1;
-let lastVideoTime = -1;
-let targets = [];
-let nextId = 1;
-let showBoxes = true;
-let ammo = MAG_SIZE, reloading = false, reloadEnd = 0, lastShot = 0;
-let kills = 0, hits = 0;
-let flashAt = -1e9, hitMarkAt = -1e9, hitMarkHead = false;
-let popups = [];
-let hover = null; // { target, zone }
-let audio = null;
+let W = 0, H = 0, DPR = 1, M = { ox: 0, oy: 0, dw: 1, dh: 1 };
+let lastVideoTime = -1, tracks = [], nextTrackId = 1;
+let showBoxes = true, ammo = MAG_SIZE, reloading = false, lastShot = 0;
+let practiceKills = 0;
+let flashAt = -1e9, hitMarkAt = -1e9, hitMarkHead = false, popups = [], hover = null, audio = null;
 
-/* ---------- setup ---------- */
+// online state
+let fb = null, db = null, roomPath = "", meRef = null, serverOffset = 0;
+let players = {}, prevMyHp = null, respawnSent = false;
+let myPos = null, lastPosPush = 0, heading = null, candInfo = {};
+let myId = null;
+try { myId = localStorage.getItem("sightline-id"); } catch {}
+if (!myId) { myId = Math.random().toString(36).slice(2, 10); try { localStorage.setItem("sightline-id", myId); } catch {} }
+const now = () => Date.now() + serverOffset;
+
+/* ---------- lobby ---------- */
 function setMsg(text, isErr = false) { msg.textContent = text; msg.classList.toggle("err", isErr); }
+try { $("name").value = localStorage.getItem("sightline-name") || ""; } catch {}
+$("room").value = Math.random().toString(36).slice(2, 6).toUpperCase();
+if (!ONLINE_READY) setMsg("Online play isn't set up yet: add your Firebase config to index.html. Practice mode works now.");
 
-goBtn.addEventListener("click", start);
+$("join").addEventListener("click", () => begin("online"));
+$("practice").addEventListener("click", () => begin("practice"));
 
-async function start() {
-  if (!window.isSecureContext) {
-    setMsg("Camera needs a secure (https) page. Open this from GitHub Pages or another https host.", true);
-    return;
+async function begin(which) {
+  const name = $("name").value.trim();
+  const room = $("room").value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (which === "online") {
+    if (!ONLINE_READY) { setMsg("Add your Firebase config to index.html first, or use practice mode.", true); return; }
+    if (!name) { setMsg("Enter your name so other players can see it.", true); $("name").focus(); return; }
+    if (room.length < 3) { setMsg("Room codes need at least 3 letters or numbers.", true); $("room").focus(); return; }
   }
-  if (!navigator.mediaDevices?.getUserMedia) {
-    setMsg("This browser can't access the camera. Open the page in Chrome on Android.", true);
-    return;
-  }
-  goBtn.disabled = true;
+  if (!window.isSecureContext) { setMsg("Camera and GPS need a secure (https) page, like GitHub Pages.", true); return; }
+  try { localStorage.setItem("sightline-name", name); } catch {}
+  $("join").disabled = $("practice").disabled = true;
+  mode = which;
   initAudio();
 
   try {
     setMsg("Opening back camera…");
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }
+      audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }
     });
-    video.srcObject = stream;
-    await video.play();
+    video.srcObject = stream; await video.play();
   } catch (e) {
-    goBtn.disabled = false;
-    setMsg(e.name === "NotAllowedError"
-      ? "Camera access was blocked. Allow the camera for this site in Chrome's site settings, then tap Start again."
-      : "Couldn't open the camera: " + e.message, true);
-    return;
+    return fail(e.name === "NotAllowedError"
+      ? "Camera access was blocked. Allow the camera for this site in Chrome's site settings, then try again."
+      : "Couldn't open the camera: " + e.message);
+  }
+
+  if (mode === "online") {
+    try { await startSensors(); } catch (e) { return fail(e.message); }
+    try {
+      setMsg("Joining room " + room + "…");
+      await joinRoom(name, room);
+    } catch (e) { return fail("Couldn't connect to the game server: " + e.message); }
   }
 
   try {
@@ -221,28 +255,159 @@ async function start() {
     const { FilesetResolver, PoseLandmarker } = await import(`${MP_BASE}/vision_bundle.mjs`);
     const fileset = await FilesetResolver.forVisionTasks(`${MP_BASE}/wasm`);
     const opts = (delegate) => ({
-      baseOptions: { modelAssetPath: MODEL_URL, delegate },
-      runningMode: "VIDEO",
-      numPoses: 4,
-      minPoseDetectionConfidence: 0.5,
-      minPosePresenceConfidence: 0.5,
-      minTrackingConfidence: 0.5
+      baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: "VIDEO", numPoses: 4,
+      minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5
     });
     try { landmarker = await PoseLandmarker.createFromOptions(fileset, opts("GPU")); }
     catch { landmarker = await PoseLandmarker.createFromOptions(fileset, opts("CPU")); }
-  } catch (e) {
-    goBtn.disabled = false;
-    setMsg("Couldn't load the detector. Check your internet connection and reload. (" + e.message + ")", true);
-    return;
-  }
+  } catch (e) { return fail("Couldn't load the detector. Check your connection and reload. (" + e.message + ")"); }
 
+  $("myName").textContent = mode === "online" ? name : "Practice";
   $("start").style.display = "none";
   $("hud").classList.add("on");
   try { await navigator.wakeLock?.request("screen"); } catch {}
   resize();
   requestAnimationFrame(loop);
 }
+function fail(text) { $("join").disabled = $("practice").disabled = false; setMsg(text, true); }
 
+/* ---------- sensors: GPS + compass ---------- */
+async function startSensors() {
+  if (!navigator.geolocation) throw new Error("This browser can't read GPS.");
+  setMsg("Waiting for GPS (allow location access)…");
+  await new Promise((resolve, reject) => {
+    let first = true;
+    navigator.geolocation.watchPosition((p) => {
+      myPos = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy };
+      pushPosition();
+      if (first) { first = false; resolve(); }
+    }, (err) => {
+      if (first) reject(new Error(err.code === 1
+        ? "Location access was blocked. Allow location for this site in Chrome's site settings."
+        : "Couldn't get a GPS fix. Go outdoors and try again."));
+    }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 20000 });
+  });
+
+  if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+    try { await DeviceOrientationEvent.requestPermission(); } catch {}
+  }
+  if ("ondeviceorientationabsolute" in window) window.addEventListener("deviceorientationabsolute", onOrient);
+  else window.addEventListener("deviceorientation", onOrient);
+}
+
+// Direction the BACK CAMERA points, in degrees clockwise from north (W3C DeviceOrientation spec math).
+function cameraHeading(alpha, beta, gamma) {
+  const r = Math.PI / 180, x = beta * r, y = gamma * r, z = alpha * r;
+  const cX = Math.cos(x), cY = Math.cos(y), cZ = Math.cos(z), sX = Math.sin(x), sY = Math.sin(y), sZ = Math.sin(z);
+  const Vx = -cZ * sY - sZ * sX * cY, Vy = -sZ * sY + cZ * sX * cY;
+  let h = Math.atan(Vx / Vy);
+  if (Vy < 0) h += Math.PI; else if (Vx < 0) h += 2 * Math.PI;
+  return h / r;
+}
+function onOrient(e) {
+  if (e.alpha == null) return;
+  let h;
+  if (e.type === "deviceorientationabsolute" || e.absolute) h = cameraHeading(e.alpha, e.beta || 0, e.gamma || 0);
+  else if (e.webkitCompassHeading != null) h = e.webkitCompassHeading;
+  else return;
+  if (!isFinite(h)) return;
+  if (heading == null) { heading = h; return; }
+  // smooth on the circle
+  const a = heading * Math.PI / 180, b = h * Math.PI / 180, k = 0.25;
+  const sx = Math.sin(a) * (1 - k) + Math.sin(b) * k, cx = Math.cos(a) * (1 - k) + Math.cos(b) * k;
+  heading = (Math.atan2(sx, cx) * 180 / Math.PI + 360) % 360;
+}
+
+/* ---------- geo math ---------- */
+const toRad = (d) => d * Math.PI / 180, toDeg = (r) => r * 180 / Math.PI;
+function geoDistance(a, b) {
+  const R = 6371000, dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+function geoBearing(a, b) {
+  const y = Math.sin(toRad(b.lng - a.lng)) * Math.cos(toRad(b.lat));
+  const x = Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) - Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(toRad(b.lng - a.lng));
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+const angDiff = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
+
+// Horizontal angle (degrees, right = positive) of a screen x position from the camera's center line.
+function screenAngle(x) {
+  const vw = video.videoWidth || 1, vh = video.videoHeight || 1;
+  const half = toRad(CAMERA_LONG_FOV / 2);
+  const tanH = vw >= vh ? Math.tan(half) : Math.tan(half) * vw / vh;
+  const nx = (x - M.ox) / M.dw;
+  return toDeg(Math.atan((nx - 0.5) * 2 * tanH));
+}
+
+/* ---------- Firebase ---------- */
+async function joinRoom(name, room) {
+  const [appMod, dbMod] = await Promise.all([import(FB_BASE + "firebase-app.js"), import(FB_BASE + "firebase-database.js")]);
+  fb = dbMod;
+  db = fb.getDatabase(appMod.initializeApp(firebaseConfig));
+  roomPath = `rooms/${room}`;
+  meRef = fb.ref(db, `${roomPath}/players/${myId}`);
+  fb.onValue(fb.ref(db, ".info/serverTimeOffset"), (s) => { serverOffset = s.val() || 0; });
+  await fb.set(meRef, {
+    name, hp: MAX_HP, kills: 0, deadUntil: 0,
+    lat: myPos?.lat ?? null, lng: myPos?.lng ?? null, acc: myPos?.acc ?? null, updated: fb.serverTimestamp()
+  });
+  fb.onDisconnect(meRef).remove();
+  fb.onValue(fb.ref(db, `${roomPath}/players`), (s) => { players = s.val() || {}; onPlayers(); });
+  const evq = fb.query(fb.ref(db, `${roomPath}/events`), fb.orderByChild("t"), fb.startAt(Date.now() - 2000));
+  fb.onChildAdded(evq, (s) => onEvent(s.val()));
+}
+
+function pushPosition() {
+  if (!meRef || !myPos) return;
+  const t = performance.now();
+  if (t - lastPosPush < 1000) return;
+  lastPosPush = t;
+  fb.update(meRef, { lat: myPos.lat, lng: myPos.lng, acc: myPos.acc, updated: fb.serverTimestamp() }).catch(() => {});
+}
+
+function onPlayers() {
+  const me = players[myId];
+  if (!me) return;
+  if (prevMyHp != null && me.hp < prevMyHp) {
+    const by = players[me.lastHitBy]?.name || "someone";
+    hurtFlash(); navigator.vibrate?.(me.hp <= 0 ? [80, 50, 160] : 60);
+    if (me.hp > 0) showBanner(`Hit by ${by}`);
+  }
+  if (me.hp > 0) respawnSent = false;
+  prevMyHp = me.hp;
+  setMyHp(me.hp);
+  $("kills").textContent = me.kills || 0;
+}
+
+function onEvent(ev) {
+  if (!ev || ev.type !== "kill" || now() - (ev.t || 0) > 6000) return;
+  if (ev.to === myId) showBanner(`Eliminated by ${ev.byName}`);
+  else if (ev.by !== myId) showBanner(`${ev.byName} eliminated ${ev.toName}`);
+}
+
+async function sendHit(pid, zone) {
+  const dmg = DAMAGE[zone];
+  const res = await fb.runTransaction(fb.ref(db, `${roomPath}/players/${pid}`), (p) => {
+    if (!p || p.hp <= 0) return;           // abort: gone or already out
+    p.hp = Math.max(0, p.hp - dmg);
+    p.lastHitBy = myId;
+    if (p.hp === 0) p.deadUntil = now() + RESPAWN_TIME;
+    return p;
+  });
+  if (res.committed && res.snapshot.val()?.hp === 0) {
+    const victim = res.snapshot.val();
+    fb.runTransaction(fb.ref(db, `${roomPath}/players/${myId}/kills`), (k) => (k || 0) + 1);
+    fb.push(fb.ref(db, `${roomPath}/events`), {
+      type: "kill", by: myId, byName: players[myId]?.name || "?", to: pid, toName: victim.name, t: fb.serverTimestamp()
+    });
+    showBanner(`You eliminated ${victim.name}`);
+    sfx("kill"); navigator.vibrate?.([40, 40, 90]);
+  }
+}
+
+/* ---------- screen + controls ---------- */
 function resize() {
   DPR = Math.min(window.devicePixelRatio || 1, 2);
   W = window.innerWidth; H = window.innerHeight;
@@ -250,30 +415,24 @@ function resize() {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 }
 window.addEventListener("resize", resize);
-
-/* ---------- controls ---------- */
 $("stage").addEventListener("pointerdown", fire);
 $("fire").addEventListener("pointerdown", (e) => { e.stopPropagation(); fire(); });
 $("reload").addEventListener("click", startReload);
 $("toggleBoxes").addEventListener("click", () => {
-  showBoxes = !showBoxes;
-  $("toggleBoxes").textContent = showBoxes ? "Hide hitboxes" : "Show hitboxes";
+  showBoxes = !showBoxes; $("toggleBoxes").textContent = showBoxes ? "Hide hitboxes" : "Show hitboxes";
 });
 
-/* ---------- geometry ---------- */
-function mapper() {
-  const vw = video.videoWidth || 1, vh = video.videoHeight || 1;
-  const s = Math.max(W / vw, H / vh);
-  const dw = vw * s, dh = vh * s, ox = (W - dw) / 2, oy = (H - dh) / 2;
-  return (p) => ({ x: ox + p.x * dw, y: oy + p.y * dh, v: p.visibility ?? 1 });
+/* ---------- body hitboxes ---------- */
+function updateMapper() {
+  const vw = video.videoWidth || 1, vh = video.videoHeight || 1, s = Math.max(W / vw, H / vh);
+  M = { dw: vw * s, dh: vh * s, ox: (W - vw * s) / 2, oy: (H - vh * s) / 2 };
 }
+const toScreen = (p) => ({ x: M.ox + p.x * M.dw, y: M.oy + p.y * M.dh, v: p.visibility ?? 1 });
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, v: Math.min(a.v, b.v) });
-
 function distToSeg(px, py, a, b) {
   const dx = b.x - a.x, dy = b.y - a.y, len2 = dx * dx + dy * dy || 1;
-  let t = ((px - a.x) * dx + (py - a.y) * dy) / len2;
-  t = Math.max(0, Math.min(1, t));
+  const t = Math.max(0, Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / len2));
   return Math.hypot(px - (a.x + t * dx), py - (a.y + t * dy));
 }
 function inPoly(px, py, pts) {
@@ -284,33 +443,27 @@ function inPoly(px, py, pts) {
   }
   return inside;
 }
-
 const ARMS = [[11, 13], [13, 15], [12, 14], [14, 16]];
 const LEGS = [[23, 25], [25, 27], [24, 26], [26, 28]];
 
-function buildBody(lms, map) {
-  const P = lms.map(map);
+function buildBody(lms) {
+  const P = lms.map(toScreen);
   const sh = mid(P[11], P[12]), hp = mid(P[23], P[24]);
   const s = Math.max(dist(P[11], P[12]), dist(sh, hp) * 0.55, 24);
-
   const headPts = [P[0], P[7], P[8]].filter((p) => p.v > 0.3);
   let head = null;
   if (headPts.length) {
-    const c = headPts.reduce((acc, p) => ({ x: acc.x + p.x / headPts.length, y: acc.y + p.y / headPts.length }), { x: 0, y: 0 });
+    const c = headPts.reduce((a, p) => ({ x: a.x + p.x / headPts.length, y: a.y + p.y / headPts.length }), { x: 0, y: 0 });
     const r = Math.max(P[7].v > 0.3 && P[8].v > 0.3 ? dist(P[7], P[8]) * 0.75 : 0, s * 0.33);
     head = { x: c.x, y: c.y - r * 0.15, r };
   }
-
   const torso = (P[11].v > 0.3 && P[12].v > 0.3) ? [P[11], P[12], P[24], P[23]] : null;
-
   const limbs = [];
   for (const [a, b] of ARMS) if (P[a].v > 0.4 && P[b].v > 0.4) limbs.push({ a: P[a], b: P[b], r: s * 0.14 });
   for (const [a, b] of LEGS) if (P[a].v > 0.4 && P[b].v > 0.4) limbs.push({ a: P[a], b: P[b], r: s * 0.18 });
-
   const anchor = head ? { x: head.x, y: head.y - head.r } : torso ? { x: sh.x, y: sh.y - s * 0.6 } : null;
   return anchor ? { head, torso, limbs, s, anchor, center: head || sh } : null;
 }
-
 function hitTest(body, x, y) {
   if (body.head && Math.hypot(x - body.head.x, y - body.head.y) <= body.head.r) return "head";
   if (body.torso && inPoly(x, y, body.torso)) return "torso";
@@ -318,69 +471,105 @@ function hitTest(body, x, y) {
   return null;
 }
 
-/* ---------- tracking: keep each player's health across frames ---------- */
-function track(bodies, now) {
-  const free = new Set(targets);
-  for (const t of targets) t.body = null;
+/* ---------- tracking bodies between frames ---------- */
+function track(bodies, t) {
+  const free = new Set(tracks);
+  for (const tr of tracks) tr.body = null;
   for (const b of bodies) {
     let best = null, bestD = Math.max(130, b.s * 1.6);
-    for (const t of free) {
-      const d = Math.hypot(t.x - b.center.x, t.y - b.center.y);
-      if (d < bestD) { bestD = d; best = t; }
+    for (const tr of free) {
+      const d = Math.hypot(tr.x - b.center.x, tr.y - b.center.y);
+      if (d < bestD) { bestD = d; best = tr; }
     }
-    if (!best) {
-      best = { id: nextId++, hp: MAX_HP, deadUntil: 0 };
-      targets.push(best);
-    } else free.delete(best);
-    best.body = b; best.x = b.center.x; best.y = b.center.y; best.lastSeen = now;
+    if (!best) { best = { id: nextTrackId++, hp: MAX_HP, deadUntil: 0, pid: null }; tracks.push(best); }
+    else free.delete(best);
+    best.body = b; best.x = b.center.x; best.y = b.center.y; best.lastSeen = t;
   }
-  targets = targets.filter((t) => now - t.lastSeen < FORGET_AFTER);
-  for (const t of targets) if (t.hp <= 0 && now >= t.deadUntil) t.hp = MAX_HP;
+  tracks = tracks.filter((tr) => t - tr.lastSeen < FORGET_AFTER);
+  for (const tr of tracks) if (tr.hp <= 0 && t >= tr.deadUntil) tr.hp = MAX_HP;   // practice respawn
 }
 
-function findHover(now) {
+/* ---------- GPS + compass matching: which body is which player ---------- */
+function matchPlayers() {
+  candInfo = {};
+  if (mode !== "online" || heading == null || !myPos) { for (const tr of tracks) tr.pid = null; return; }
+  const cands = [];
+  for (const [pid, p] of Object.entries(players)) {
+    if (pid === myId || p.lat == null || now() - (p.updated || 0) > STALE_POS) continue;
+    const d = geoDistance(myPos, p), b = geoBearing(myPos, p);
+    const tol = Math.min(60, COMPASS_TOL + toDeg(Math.atan2((myPos.acc || 10) + (p.acc || 10), Math.max(d, 1))));
+    const c = { pid, d, b, tol };
+    cands.push(c); candInfo[pid] = c;
+  }
+  const visible = tracks.filter((tr) => tr.body);
+  for (const tr of visible) tr.bearing = (heading + screenAngle(tr.body.center.x) + 360) % 360;
+
+  const taken = new Set();
+  for (const tr of visible) {           // keep existing matches if still plausible (less flicker)
+    const c = tr.pid && candInfo[tr.pid];
+    if (c && !taken.has(c.pid) && angDiff(tr.bearing, c.b) <= c.tol * 1.3) taken.add(c.pid);
+    else tr.pid = null;
+  }
+  const pairs = [];
+  for (const tr of visible) if (!tr.pid) for (const c of cands) if (!taken.has(c.pid)) {
+    const df = angDiff(tr.bearing, c.b);
+    if (df <= c.tol) pairs.push({ tr, c, score: df / c.tol });
+  }
+  pairs.sort((a, b) => a.score - b.score);
+  for (const p of pairs) if (!p.tr.pid && !taken.has(p.c.pid)) { p.tr.pid = p.c.pid; taken.add(p.c.pid); }
+}
+
+// What we know about the player on a track, or null if it's not a player in this match.
+function info(tr) {
+  if (mode === "practice") return { name: `Player ${tr.id}`, hp: tr.hp, dead: tr.hp <= 0, deadUntil: tr.deadUntil, clock: performance.now() };
+  const p = tr.pid && players[tr.pid];
+  if (!p) return null;
+  return { name: p.name, hp: p.hp, dead: p.hp <= 0, deadUntil: p.deadUntil, clock: now(), d: candInfo[tr.pid]?.d };
+}
+function findHover() {
   const cx = W / 2, cy = H / 2;
   let best = null;
-  for (const t of targets) {
-    if (!t.body || t.hp <= 0) continue;
-    const zone = hitTest(t.body, cx, cy);
-    if (zone && (!best || ZONE_RANK[zone] > ZONE_RANK[best.zone])) best = { target: t, zone };
+  for (const tr of tracks) {
+    if (!tr.body) continue;
+    const i = info(tr);
+    if (!i || i.dead) continue;
+    const zone = hitTest(tr.body, cx, cy);
+    if (zone && (!best || ZONE_RANK[zone] > ZONE_RANK[best.zone])) best = { tr, zone };
   }
   return best;
 }
+const iAmDead = () => mode === "online" && players[myId]?.hp <= 0;
 
 /* ---------- shooting ---------- */
 function fire() {
-  if (!landmarker) return;
-  const now = performance.now();
-  if (reloading || now - lastShot < FIRE_DELAY) return;
+  if (!landmarker || iAmDead()) return;
+  const t = performance.now();
+  if (reloading || t - lastShot < FIRE_DELAY) return;
   if (ammo <= 0) { sfx("dry"); startReload(); return; }
+  lastShot = t; ammo--; updateAmmo();
+  flashAt = t; sfx("shot"); navigator.vibrate?.(15);
 
-  lastShot = now; ammo--; updateAmmo();
-  flashAt = now; sfx("shot"); navigator.vibrate?.(15);
-
-  const h = findHover(now);
+  const h = findHover();
   if (h) {
-    const dmg = DAMAGE[h.zone], t = h.target;
-    t.hp = Math.max(0, t.hp - dmg);
-    hits++; $("hits").textContent = hits;
-    hitMarkAt = now; hitMarkHead = h.zone === "head";
-    popups.push({ x: W / 2 + (Math.random() * 30 - 15), y: H / 2 - 30, text: (h.zone === "head" ? "Headshot " : "") + dmg, head: hitMarkHead, t: now });
+    const dmg = DAMAGE[h.zone];
+    hitMarkAt = t; hitMarkHead = h.zone === "head";
+    popups.push({ x: W / 2 + (Math.random() * 30 - 15), y: H / 2 - 30, text: (hitMarkHead ? "Headshot " : "") + dmg, head: hitMarkHead, t });
     sfx(hitMarkHead ? "head" : "hit");
-    if (t.hp <= 0) {
-      t.deadUntil = now + RESPAWN_TIME;
-      kills++; $("kills").textContent = kills;
-      showBanner(`Player ${t.id} eliminated`);
-      sfx("kill"); navigator.vibrate?.([40, 40, 90]);
+    if (mode === "practice") {
+      h.tr.hp = Math.max(0, h.tr.hp - dmg);
+      if (h.tr.hp === 0) {
+        h.tr.deadUntil = t + RESPAWN_TIME; practiceKills++; $("kills").textContent = practiceKills;
+        showBanner(`Player ${h.tr.id} eliminated`); sfx("kill"); navigator.vibrate?.([40, 40, 90]);
+      }
+    } else {
+      sendHit(h.tr.pid, h.zone).catch(() => showBanner("Hit didn't reach the server"));
     }
   }
   if (ammo === 0) startReload();
 }
-
 function startReload() {
   if (reloading || ammo === MAG_SIZE) return;
-  reloading = true; reloadEnd = performance.now() + RELOAD_TIME;
-  sfx("reload");
+  reloading = true; sfx("reload");
   $("ammoCount").innerHTML = `…<small> reloading</small>`;
   setTimeout(() => { reloading = false; ammo = MAG_SIZE; updateAmmo(); }, RELOAD_TIME);
 }
@@ -389,144 +578,196 @@ function updateAmmo() {
   el.innerHTML = `${ammo}<small> / ${MAG_SIZE}</small>`;
   el.classList.toggle("low", ammo <= 3);
 }
-let bannerTimer;
+function setMyHp(hp) {
+  $("myHp").textContent = hp;
+  const bar = $("myHpBar"), pct = hp / MAX_HP;
+  bar.style.width = pct * 100 + "%";
+  bar.style.background = pct > 0.5 ? "var(--ok)" : pct > 0.25 ? "var(--amber)" : "var(--hit)";
+}
+let bannerTimer, hurtTimer;
 function showBanner(text) {
   const b = $("banner"); b.textContent = text; b.classList.add("show");
-  clearTimeout(bannerTimer); bannerTimer = setTimeout(() => b.classList.remove("show"), 1600);
+  clearTimeout(bannerTimer); bannerTimer = setTimeout(() => b.classList.remove("show"), 1800);
+}
+function hurtFlash() {
+  const el = $("hurt"); el.classList.add("show");
+  clearTimeout(hurtTimer); hurtTimer = setTimeout(() => el.classList.remove("show"), 60);
 }
 
 /* ---------- main loop ---------- */
 function loop() {
   requestAnimationFrame(loop);
-  const now = performance.now();
+  const t = performance.now();
+  updateMapper();
   if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
     lastVideoTime = video.currentTime;
-    const res = landmarker.detectForVideo(video, now);
-    const map = mapper();
-    const bodies = (res.landmarks || []).map((l) => buildBody(l, map)).filter(Boolean);
-    track(bodies, now);
-    const inView = targets.filter((t) => t.body).length;
-    $("status").textContent = inView === 0 ? "Looking for players…" : inView === 1 ? "1 player in view" : `${inView} players in view`;
+    const res = landmarker.detectForVideo(video, t);
+    track((res.landmarks || []).map(buildBody).filter(Boolean), t);
   }
-  hover = findHover(now);
-  draw(now);
+  matchPlayers();
+  hover = findHover();
+
+  if (mode === "online") {
+    const me = players[myId];
+    const dead = me && me.hp <= 0;
+    $("dead").classList.toggle("on", !!dead);
+    $("fire").disabled = !!dead;
+    if (dead) {
+      $("deadText").textContent = `Back in ${Math.max(0, Math.ceil((me.deadUntil - now()) / 1000))}s`;
+      if (now() >= me.deadUntil && !respawnSent) { respawnSent = true; fb.update(meRef, { hp: MAX_HP }); }
+    }
+  }
+  updateStatus();
+  draw(t);
+}
+
+let lastStatus = "";
+function updateStatus() {
+  let html;
+  if (mode === "practice") {
+    const n = tracks.filter((tr) => tr.body).length;
+    html = n ? `<b>${n}</b> ${n === 1 ? "person" : "people"} in view` : "Looking for people…";
+  } else {
+    const others = Object.keys(players).filter((p) => p !== myId).length;
+    const room = roomPath.split("/")[1];
+    const gps = myPos ? `GPS ±${Math.round(myPos.acc)} m` : "No GPS";
+    const warn = heading == null ? `<br><span class="warn">No compass on this phone, can't match players</span>`
+      : myPos && myPos.acc > 25 ? `<br><span class="warn">Weak GPS, move to open sky</span>` : "";
+    html = `Room <b>${room}</b>, ${others} other ${others === 1 ? "player" : "players"}<br>${gps}${warn}`;
+  }
+  if (html !== lastStatus) { $("status").innerHTML = html; lastStatus = html; }
 }
 
 /* ---------- drawing ---------- */
-function draw(now) {
+function draw(t) {
   ctx.clearRect(0, 0, W, H);
-
-  for (const t of targets) {
-    if (!t.body) continue;
-    const b = t.body, dead = t.hp <= 0;
-    const base = dead ? "rgba(159,176,194,0.7)" : "#FFB020";
-
-    if (showBoxes && !dead) {
-      ctx.lineCap = "round";
-      for (const l of b.limbs) {
-        const hot = hover?.target === t && hover.zone === "limb" && distToSeg(W / 2, H / 2, l.a, l.b) <= l.r;
-        ctx.strokeStyle = hot ? "rgba(255,59,78,0.45)" : "rgba(255,176,32,0.22)";
-        ctx.lineWidth = l.r * 2;
-        ctx.beginPath(); ctx.moveTo(l.a.x, l.a.y); ctx.lineTo(l.b.x, l.b.y); ctx.stroke();
-      }
-      if (b.torso) {
-        const hot = hover?.target === t && hover.zone === "torso";
-        ctx.beginPath(); b.torso.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.closePath();
-        ctx.fillStyle = hot ? "rgba(255,59,78,0.3)" : "rgba(255,176,32,0.12)"; ctx.fill();
-        ctx.strokeStyle = hot ? "#FF3B4E" : base; ctx.lineWidth = 2; ctx.stroke();
-      }
-      if (b.head) {
-        const hot = hover?.target === t && hover.zone === "head";
-        ctx.beginPath(); ctx.arc(b.head.x, b.head.y, b.head.r, 0, Math.PI * 2);
-        ctx.fillStyle = hot ? "rgba(255,59,78,0.3)" : "rgba(255,176,32,0.12)"; ctx.fill();
-        ctx.strokeStyle = hot ? "#FF3B4E" : base; ctx.lineWidth = 2; ctx.stroke();
-      }
-    }
-
-    // health bar + name
-    const bw = 76, bh = 8, x = b.anchor.x - bw / 2, y = b.anchor.y - 22;
-    ctx.fillStyle = "rgba(14,26,43,0.75)"; roundRect(x - 4, y - 18, bw + 8, bh + 24, 6); ctx.fill();
-    ctx.font = "600 12px 'Chakra Petch', system-ui, sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-    ctx.fillStyle = "#F2F5F7"; ctx.fillText(`Player ${t.id}`, x, y - 5);
-    if (dead) {
-      const secs = Math.max(0, Math.ceil((t.deadUntil - now) / 1000));
-      ctx.fillStyle = "#FF3B4E"; ctx.textAlign = "right"; ctx.fillText(`Out ${secs}s`, x + bw, y - 5);
-    } else {
-      ctx.textAlign = "right"; ctx.fillStyle = "#9FB0C2"; ctx.fillText(t.hp, x + bw, y - 5);
-    }
-    ctx.fillStyle = "rgba(255,255,255,0.15)"; ctx.fillRect(x, y, bw, bh);
-    const pct = t.hp / MAX_HP;
-    ctx.fillStyle = pct > 0.5 ? "#3DDC97" : pct > 0.25 ? "#FFB020" : "#FF3B4E";
-    ctx.fillRect(x, y, bw * pct, bh);
+  for (const tr of tracks) {
+    if (!tr.body) continue;
+    const i = info(tr), b = tr.body;
+    if (!i) { drawBystander(b); continue; }
+    if (showBoxes && !i.dead) drawHitboxes(tr, b);
+    drawTag(b, i);
   }
-
-  // muzzle flash
-  const fa = 1 - (now - flashAt) / 70;
+  const fa = 1 - (t - flashAt) / 70;
   if (fa > 0) { ctx.fillStyle = `rgba(255,240,200,${0.12 * fa})`; ctx.fillRect(0, 0, W, H); }
-
-  drawCrosshair(now);
-
-  // damage popups
-  popups = popups.filter((p) => now - p.t < 750);
+  if (mode === "online") drawRadar();
+  drawCrosshair(t);
+  popups = popups.filter((p) => t - p.t < 750);
   for (const p of popups) {
-    const k = (now - p.t) / 750;
+    const k = (t - p.t) / 750;
     ctx.globalAlpha = 1 - k;
-    ctx.font = `700 ${p.head ? 24 : 20}px 'Chakra Petch', system-ui, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.lineWidth = 4; ctx.strokeStyle = "rgba(0,0,0,0.6)";
-    ctx.strokeText(p.text, p.x, p.y - k * 50);
-    ctx.fillStyle = p.head ? "#FF3B4E" : "#FFB020";
-    ctx.fillText(p.text, p.x, p.y - k * 50);
+    ctx.font = `700 ${p.head ? 24 : 20}px 'Chakra Petch', system-ui, sans-serif`; ctx.textAlign = "center";
+    ctx.lineWidth = 4; ctx.strokeStyle = "rgba(0,0,0,0.6)"; ctx.strokeText(p.text, p.x, p.y - k * 50);
+    ctx.fillStyle = p.head ? "#FF3B4E" : "#FFB020"; ctx.fillText(p.text, p.x, p.y - k * 50);
     ctx.globalAlpha = 1;
   }
 }
 
-function drawCrosshair(now) {
-  const cx = W / 2, cy = H / 2;
-  const recoil = Math.max(0, 1 - (now - lastShot) / 150) * 8;
-  const gap = 7 + recoil, len = 12;
-  const col = hover ? "#FF3B4E" : "#FFFFFF";
-  const segs = [[cx, cy - gap, cx, cy - gap - len], [cx, cy + gap, cx, cy + gap + len],
-                [cx - gap, cy, cx - gap - len, cy], [cx + gap, cy, cx + gap + len, cy]];
-  ctx.lineCap = "round";
-  for (const [lw, c] of [[5, "rgba(0,0,0,0.55)"], [2, col]]) {
-    ctx.lineWidth = lw; ctx.strokeStyle = c;
-    ctx.beginPath(); for (const [a, b, c2, d] of segs) { ctx.moveTo(a, b); ctx.lineTo(c2, d); } ctx.stroke();
-  }
-  ctx.fillStyle = col; ctx.beginPath(); ctx.arc(cx, cy, 2, 0, Math.PI * 2); ctx.fill();
+function drawBystander(b) {
+  if (!showBoxes) return;
+  ctx.font = "500 12px 'Chakra Petch', system-ui, sans-serif"; ctx.textAlign = "center";
+  ctx.fillStyle = "rgba(242,245,247,0.55)";
+  ctx.fillText("Not in match", b.anchor.x, b.anchor.y - 8);
+}
 
-  // hit marker
-  const hk = 1 - (now - hitMarkAt) / 180;
-  if (hk > 0) {
-    const r1 = 10, r2 = 20;
-    ctx.globalAlpha = hk; ctx.strokeStyle = hitMarkHead ? "#FF3B4E" : "#FFFFFF"; ctx.lineWidth = 3;
-    ctx.beginPath();
-    for (const [dx, dy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
-      ctx.moveTo(cx + dx * r1 * 0.7, cy + dy * r1 * 0.7); ctx.lineTo(cx + dx * r2 * 0.7, cy + dy * r2 * 0.7);
-    }
-    ctx.stroke(); ctx.globalAlpha = 1;
+function drawHitboxes(tr, b) {
+  const hotZone = hover?.tr === tr ? hover.zone : null;
+  ctx.lineCap = "round";
+  for (const l of b.limbs) {
+    const hot = hotZone === "limb" && distToSeg(W / 2, H / 2, l.a, l.b) <= l.r;
+    ctx.strokeStyle = hot ? "rgba(255,59,78,0.45)" : "rgba(255,176,32,0.22)"; ctx.lineWidth = l.r * 2;
+    ctx.beginPath(); ctx.moveTo(l.a.x, l.a.y); ctx.lineTo(l.b.x, l.b.y); ctx.stroke();
+  }
+  if (b.torso) {
+    const hot = hotZone === "torso";
+    ctx.beginPath(); b.torso.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.closePath();
+    ctx.fillStyle = hot ? "rgba(255,59,78,0.3)" : "rgba(255,176,32,0.12)"; ctx.fill();
+    ctx.strokeStyle = hot ? "#FF3B4E" : "#FFB020"; ctx.lineWidth = 2; ctx.stroke();
+  }
+  if (b.head) {
+    const hot = hotZone === "head";
+    ctx.beginPath(); ctx.arc(b.head.x, b.head.y, b.head.r, 0, Math.PI * 2);
+    ctx.fillStyle = hot ? "rgba(255,59,78,0.3)" : "rgba(255,176,32,0.12)"; ctx.fill();
+    ctx.strokeStyle = hot ? "#FF3B4E" : "#FFB020"; ctx.lineWidth = 2; ctx.stroke();
   }
 }
 
+function drawTag(b, i) {
+  ctx.font = "700 14px 'Chakra Petch', system-ui, sans-serif";
+  const sub = i.dead ? `Out ${Math.max(0, Math.ceil((i.deadUntil - i.clock) / 1000))}s`
+            : i.d != null ? `${Math.round(i.d)} m` : `${i.hp}`;
+  const nameW = ctx.measureText(i.name).width;
+  ctx.font = "500 12px 'Chakra Petch', system-ui, sans-serif";
+  const subW = ctx.measureText(sub).width;
+  const bw = Math.max(84, nameW + subW + 18), bh = 7;
+  const x = b.anchor.x - bw / 2, y = b.anchor.y - 16;
+  ctx.fillStyle = "rgba(14,26,43,0.78)"; roundRect(x - 6, y - 22, bw + 12, bh + 30, 7); ctx.fill();
+  ctx.textBaseline = "alphabetic";
+  ctx.font = "700 14px 'Chakra Petch', system-ui, sans-serif"; ctx.textAlign = "left";
+  ctx.fillStyle = i.dead ? "#9FB0C2" : "#F2F5F7"; ctx.fillText(i.name, x, y - 6);
+  ctx.font = "500 12px 'Chakra Petch', system-ui, sans-serif"; ctx.textAlign = "right";
+  ctx.fillStyle = i.dead ? "#FF3B4E" : "#9FB0C2"; ctx.fillText(sub, x + bw, y - 6);
+  ctx.fillStyle = "rgba(255,255,255,0.15)"; ctx.fillRect(x, y, bw, bh);
+  const pct = i.hp / MAX_HP;
+  ctx.fillStyle = pct > 0.5 ? "#3DDC97" : pct > 0.25 ? "#FFB020" : "#FF3B4E";
+  ctx.fillRect(x, y, bw * pct, bh);
+}
+
+// Mini radar: you in the middle, the top is where your camera points.
+function drawRadar() {
+  const r = 52, cx = W / 2, cy = H - r - 40;
+  ctx.fillStyle = "rgba(14,26,43,0.62)"; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.18)"; ctx.lineWidth = 1; ctx.stroke();
+  if (heading == null || !myPos) return;
+  // camera view wedge
+  const a1 = toRad(screenAngle(0)), a2 = toRad(screenAngle(W));
+  ctx.fillStyle = "rgba(255,176,32,0.14)"; ctx.beginPath(); ctx.moveTo(cx, cy);
+  ctx.arc(cx, cy, r, -Math.PI / 2 + a1, -Math.PI / 2 + a2); ctx.closePath(); ctx.fill();
+  const range = Math.max(30, ...Object.values(candInfo).map((c) => c.d * 1.15));
+  for (const c of Object.values(candInfo)) {
+    const rel = toRad(c.b - heading), rr = Math.min(1, c.d / range) * (r - 6);
+    const p = players[c.pid];
+    ctx.fillStyle = p?.hp > 0 ? "#FFB020" : "#9FB0C2";
+    ctx.beginPath(); ctx.arc(cx + Math.sin(rel) * rr, cy - Math.cos(rel) * rr, 4, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = "#F2F5F7"; ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.font = "500 11px 'Chakra Petch', system-ui, sans-serif"; ctx.textAlign = "center"; ctx.fillStyle = "#9FB0C2";
+  ctx.fillText(`${Math.round(range)} m`, cx, cy + r - 6);
+}
+
+function drawCrosshair(t) {
+  const cx = W / 2, cy = H / 2, recoil = Math.max(0, 1 - (t - lastShot) / 150) * 8;
+  const gap = 7 + recoil, len = 12, col = hover ? "#FF3B4E" : "#FFFFFF";
+  const segs = [[cx, cy - gap, cx, cy - gap - len], [cx, cy + gap, cx, cy + gap + len], [cx - gap, cy, cx - gap - len, cy], [cx + gap, cy, cx + gap + len, cy]];
+  ctx.lineCap = "round";
+  for (const [lw, c] of [[5, "rgba(0,0,0,0.55)"], [2, col]]) {
+    ctx.lineWidth = lw; ctx.strokeStyle = c; ctx.beginPath();
+    for (const [a, b, c2, d] of segs) { ctx.moveTo(a, b); ctx.lineTo(c2, d); }
+    ctx.stroke();
+  }
+  ctx.fillStyle = col; ctx.beginPath(); ctx.arc(cx, cy, 2, 0, Math.PI * 2); ctx.fill();
+  const hk = 1 - (t - hitMarkAt) / 180;
+  if (hk > 0) {
+    ctx.globalAlpha = hk; ctx.strokeStyle = hitMarkHead ? "#FF3B4E" : "#FFFFFF"; ctx.lineWidth = 3; ctx.beginPath();
+    for (const [dx, dy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) { ctx.moveTo(cx + dx * 7, cy + dy * 7); ctx.lineTo(cx + dx * 14, cy + dy * 14); }
+    ctx.stroke(); ctx.globalAlpha = 1;
+  }
+}
 function roundRect(x, y, w, h, r) {
   ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r);
   ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
 
-/* ---------- sound (synthesized, no files needed) ---------- */
-function initAudio() {
-  try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch { audio = null; }
-}
+/* ---------- sound ---------- */
+function initAudio() { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch { audio = null; } }
 function tone(freq, dur, type = "square", vol = 0.15, delay = 0) {
-  const t0 = audio.currentTime + delay;
-  const o = audio.createOscillator(), g = audio.createGain();
+  const t0 = audio.currentTime + delay, o = audio.createOscillator(), g = audio.createGain();
   o.type = type; o.frequency.setValueAtTime(freq, t0);
   g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
   o.connect(g).connect(audio.destination); o.start(t0); o.stop(t0 + dur);
 }
 function noise(dur, vol, cutoff) {
-  const len = Math.floor(audio.sampleRate * dur);
-  const buf = audio.createBuffer(1, len, audio.sampleRate), d = buf.getChannelData(0);
+  const len = Math.floor(audio.sampleRate * dur), buf = audio.createBuffer(1, len, audio.sampleRate), d = buf.getChannelData(0);
   for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
   const src = audio.createBufferSource(), f = audio.createBiquadFilter(), g = audio.createGain();
   src.buffer = buf; f.type = "lowpass"; f.frequency.value = cutoff; g.gain.value = vol;
