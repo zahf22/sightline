@@ -89,20 +89,42 @@
 
   /* Face scan */
   #enroll {
-    position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: space-between;
+    position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
     padding: calc(env(safe-area-inset-top, 0px) + 24px) 24px calc(env(safe-area-inset-bottom, 0px) + 28px);
   }
   #enroll .guide {
-    width: min(62vw, 300px); aspect-ratio: 3 / 4; border-radius: 50%;
+    height: min(62vh, 320px); width: auto; aspect-ratio: 3 / 4; border-radius: 50%; flex: none;
     border: 3px dashed rgba(255,255,255,0.8); box-shadow: 0 0 0 100vmax rgba(14,26,43,0.55);
     margin: auto 0;
   }
   #enroll .guide.good { border-color: var(--ok); border-style: solid; }
-  #enroll h2 { font-size: 26px; font-weight: 700; text-align: center; position: relative; }
+  #enroll h2 { font-size: 26px; font-weight: 700; text-align: center; position: relative; margin-bottom: 8px; }
   #enroll p { color: var(--ink); font-size: 15px; text-align: center; line-height: 1.45; max-width: 360px; position: relative; }
   #enrollMsg { min-height: 1.4em; margin-top: 8px; }
   #enrollMsg.err { color: var(--hit); }
   .enroll-foot { width: 100%; max-width: 420px; position: relative; }
+  @media (orientation: landscape) {
+    #enroll { flex-direction: row; justify-content: center; gap: 36px; }
+    #enroll .guide { margin: 0; }
+    .enroll-foot { max-width: 360px; }
+    #enroll h2, #enroll p { text-align: left; }
+  }
+
+  /* Rotate prompt: the game is landscape-only */
+  #rotate {
+    position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; padding: 24px; text-align: center; background: var(--panel-solid); z-index: 50;
+  }
+  #rotate .phone {
+    width: 56px; height: 92px; border: 3px solid var(--amber); border-radius: 10px; margin-bottom: 12px;
+    animation: tilt 1.8s ease-in-out infinite;
+  }
+  @keyframes tilt { 0%, 30% { transform: rotate(0deg); } 60%, 100% { transform: rotate(-90deg); } }
+  #rotate b { font-size: 24px; }
+  #rotate span { color: var(--muted); font-size: 15px; }
+  #rotate .secondary { max-width: 260px; }
+  @media (orientation: portrait) { body.playing #rotate { display: flex; } }
+  @media (prefers-reduced-motion: reduce) { #rotate .phone { animation: none; transform: rotate(-90deg); } }
 
   /* Lobby */
   #start {
@@ -170,13 +192,20 @@
 <div id="banner"></div>
 
 <div id="enroll">
-  <h2>Scan your face</h2>
   <div class="guide" id="guide"></div>
   <div class="enroll-foot">
+    <h2>Scan your face</h2>
     <p>Hold the phone at arm's length, face a light, and fit your face in the oval. Other players' phones use this scan to show your name.</p>
     <p id="enrollMsg" role="status"></p>
     <button id="scan" class="primary" type="button">Scan my face</button>
   </div>
+</div>
+
+<div id="rotate">
+  <div class="phone"></div>
+  <b>Turn your phone sideways</b>
+  <span>Sightline plays in landscape.</span>
+  <button id="rotateBtn" class="secondary" type="button">Go full screen</button>
 </div>
 
 <div id="start">
@@ -216,7 +245,8 @@ const DAMAGE = { head: 50, torso: 25, limb: 12 };
 const ZONE_RANK = { head: 3, torso: 2, limb: 1 };
 const MAX_HP = 100, MAG_SIZE = 12, FIRE_DELAY = 180, RELOAD_TIME = 1500, RESPAWN_TIME = 3000;
 const FORGET_AFTER = 2000;
-const FACE_MATCH = 0.55;      // lower = stricter face matching
+const FACE_MATCH = 0.6;       // lower = stricter face matching
+const FACE_MARGIN = 0.04;     // best match must beat the next player by this much
 const FACE_EVERY = 350;       // ms between face recognition passes
 const FACE_FRESH = 600;       // ms a face result stays usable
 const MISSES_TO_DROP = 3;     // unmatched face passes before a nametag is removed
@@ -239,7 +269,7 @@ let showBoxes = true, ammo = MAG_SIZE, reloading = false, lastShot = 0, practice
 let flashAt = -1e9, hitMarkAt = -1e9, hitMarkHead = false, popups = [], hover = null, audio = null;
 
 // face state
-let faceBusy = false, lastFaceRun = 0, lastFaces = [], lastFacesAt = -1e9, faceRunId = 0;
+let faceErrors = 0, faceBusy = false, lastFaceRun = 0, lastFaces = [], lastFacesAt = -1e9, faceRunId = 0;
 let faceDesc = {};            // pid -> Float32Array(128)
 
 // online state
@@ -269,6 +299,8 @@ async function begin(which) {
     if (room.length < 3) { setMsg("Room codes need at least 3 letters or numbers.", true); $("room").focus(); return; }
   }
   if (!window.isSecureContext) { setMsg("The camera needs a secure (https) page, like GitHub Pages.", true); return; }
+  document.body.classList.add("playing");
+  goLandscape();
   try { localStorage.setItem("sightline-name", name); } catch {}
   $("join").disabled = $("practice").disabled = true;
   mode = which;
@@ -311,6 +343,7 @@ async function begin(which) {
   requestAnimationFrame(loop);
 }
 function fail(text) {
+  document.body.classList.remove("playing");
   $("start").style.display = "flex"; $("enroll").style.display = "none";
   $("join").disabled = $("practice").disabled = false; setMsg(text, true);
 }
@@ -319,6 +352,13 @@ function cameraError(e) {
     ? "Camera access was blocked. Allow the camera for this site in Chrome's site settings, then try again."
     : "Couldn't open the camera: " + e.message;
 }
+
+// Full screen + landscape lock (Chrome on Android only allows the lock while full screen).
+async function goLandscape() {
+  try { if (!document.fullscreenElement) await document.documentElement.requestFullscreen({ navigationUI: "hide" }); } catch {}
+  try { await screen.orientation.lock("landscape"); } catch {}
+}
+$("rotateBtn").addEventListener("click", goLandscape);
 
 async function openCamera(facing) {
   if (stream) stream.getTracks().forEach((t) => t.stop());
@@ -436,7 +476,7 @@ async function loadFaceApi() {
   const uri = `${FACEAPI_BASE}/model`;
   await Promise.all([
     faceapi.nets.tinyFaceDetector.loadFromUri(uri),
-    faceapi.nets.faceLandmark68TinyNet.loadFromUri(uri),
+    faceapi.nets.faceLandmark68Net.loadFromUri(uri),
     faceapi.nets.faceRecognitionNet.loadFromUri(uri)
   ]);
 }
@@ -452,23 +492,24 @@ function enroll() {
     $("scan").disabled = false;
     $("scan").onclick = async () => {
       $("scan").disabled = true;
-      setEnrollMsg("Hold still…");
+      setEnrollMsg("Slowly turn your head a little left, then right…");
       const samples = [];
-      for (let i = 0; i < 6 && samples.length < 3; i++) {
-        const r = await faceapi.detectSingleFace(video, faceOpts(416)).withFaceLandmarks(true).withFaceDescriptor();
+      for (let i = 0; i < 12 && samples.length < 5; i++) {
+        const r = await faceapi.detectSingleFace(video, faceOpts(416)).withFaceLandmarks().withFaceDescriptor();
         if (r) { samples.push(r.descriptor); $("guide").classList.add("good"); }
         await sleep(250);
       }
       $("guide").classList.remove("good");
-      if (samples.length < 2) {
+      if (samples.length < 3) {
         setEnrollMsg("No face found. Hold the phone at arm's length, face a light, and try again.", true);
         $("scan").disabled = false;
         return;
       }
+      const round = (arr) => Array.from(arr, (v) => Math.round(v * 10000) / 10000);
       const avg = new Array(128).fill(0);
       for (const s of samples) for (let i = 0; i < 128; i++) avg[i] += s[i] / samples.length;
       try {
-        await fb.update(meRef, { face: avg.map((v) => Math.round(v * 10000) / 10000) });
+        await fb.update(meRef, { faces: [round(avg), ...samples.map(round)] });
       } catch (e) {
         setEnrollMsg("Couldn't save your scan: " + e.message, true);
         $("scan").disabled = false;
@@ -488,7 +529,7 @@ async function runFaces() {
   try {
     const vw = video.videoWidth, vh = video.videoHeight;
     if (!vw) return;
-    const res = await faceapi.detectAllFaces(video, faceOpts(320)).withFaceLandmarks(true).withFaceDescriptors();
+    const res = await faceapi.detectAllFaces(video, faceOpts(416)).withFaceLandmarks().withFaceDescriptors();
     const runId = ++faceRunId;
     const faces = res.map((r) => {
       const b = r.detection.box;
@@ -497,17 +538,25 @@ async function runFaces() {
       return { x, y, w, h, cx: x + w / 2, cy: y + h / 2, desc: r.descriptor, pid: null, runId };
     });
     const pairs = [];
-    for (const f of faces) for (const [pid, d] of Object.entries(faceDesc)) {
-      if (pid === myId) continue;
-      const dd = faceapi.euclideanDistance(f.desc, d);
-      if (dd < FACE_MATCH) pairs.push({ f, pid, dd });
+    for (const f of faces) {
+      const scores = [];
+      for (const [pid, list] of Object.entries(faceDesc)) {
+        if (pid === myId) continue;
+        let dd = Infinity;
+        for (const d of list) dd = Math.min(dd, faceapi.euclideanDistance(f.desc, d));
+        scores.push({ pid, dd });
+      }
+      scores.sort((a, b) => a.dd - b.dd);
+      f.best = scores[0] || null;
+      const clear = scores.length < 2 || scores[1].dd - scores[0].dd >= FACE_MARGIN;
+      for (const sc of scores) if (sc.dd < FACE_MATCH && (sc !== scores[0] || clear)) pairs.push({ f, pid: sc.pid, dd: sc.dd });
     }
     pairs.sort((a, b) => a.dd - b.dd);
     const used = new Set();
     for (const p of pairs) if (!p.f.pid && !used.has(p.pid)) { p.f.pid = p.pid; used.add(p.pid); }
     lastFaces = faces; lastFacesAt = performance.now();
   } catch (e) {
-    console.warn("face pass failed", e);
+    faceErrors++; console.warn("face pass failed", e);
   } finally { faceBusy = false; }
 }
 
@@ -529,7 +578,12 @@ async function joinRoom(name, room) {
 function onPlayers() {
   const next = {};
   for (const [pid, p] of Object.entries(players)) {
-    if (Array.isArray(p.face) && p.face.length === 128) next[pid] = faceDesc[pid] && sameFace(faceDesc[pid], p.face) ? faceDesc[pid] : new Float32Array(p.face);
+    const raw = Array.isArray(p.faces) ? p.faces : Array.isArray(p.face) ? [p.face] : null;
+    if (!raw) continue;
+    const list = raw.filter((a) => Array.isArray(a) && a.length === 128);
+    if (!list.length) continue;
+    const old = faceDesc[pid];
+    next[pid] = old && old.length === list.length && sameFace(old[0], list[0]) ? old : list.map((a) => new Float32Array(a));
   }
   faceDesc = next;
 
@@ -816,6 +870,7 @@ function updateStatus() {
     html = `Room <b>${room}</b>, ${others.length} other ${others.length === 1 ? "player" : "players"}`;
     html += `<br>${myPos ? `GPS ±${Math.round(myPos.acc)} m` : gpsError || "Waiting for GPS"}${heading == null ? ", no compass" : ""}`;
     if (unscanned) html += `<br><span class="warn">${unscanned} still scanning their face</span>`;
+    if (faceErrors > 3) html += `<br><span class="warn">Face check is failing on this phone</span>`;
   }
   if (html !== lastStatus) { $("status").innerHTML = html; lastStatus = html; }
 }
@@ -832,7 +887,7 @@ function draw(t) {
   }
   const fa = 1 - (t - flashAt) / 70;
   if (fa > 0) { ctx.fillStyle = `rgba(255,240,200,${0.12 * fa})`; ctx.fillRect(0, 0, W, H); }
-  if (mode === "online") drawRadar();
+  if (mode === "online") { drawFaceDebug(); drawRadar(); }
   drawCrosshair(t);
   popups = popups.filter((p) => t - p.t < 750);
   for (const p of popups) {
@@ -842,6 +897,19 @@ function draw(t) {
     ctx.lineWidth = 4; ctx.strokeStyle = "rgba(0,0,0,0.6)"; ctx.strokeText(p.text, p.x, p.y - k * 50);
     ctx.fillStyle = p.head ? "#FF3B4E" : "#FFB020"; ctx.fillText(p.text, p.x, p.y - k * 50);
     ctx.globalAlpha = 1;
+  }
+}
+
+// With hitboxes shown, outline each detected face with its closest match score (lower is a better match).
+function drawFaceDebug() {
+  if (!showBoxes || performance.now() - lastFacesAt > FACE_FRESH) return;
+  ctx.font = "500 11px 'Chakra Petch', system-ui, sans-serif"; ctx.textAlign = "left";
+  for (const f of lastFaces) {
+    ctx.strokeStyle = f.pid ? "#3DDC97" : "rgba(242,245,247,0.8)"; ctx.lineWidth = 1.5;
+    ctx.strokeRect(f.x, f.y, f.w, f.h);
+    const label = f.best ? `${players[f.best.pid]?.name || "?"} ${f.best.dd.toFixed(2)}` : "no scans yet";
+    ctx.fillStyle = "rgba(14,26,43,0.7)"; ctx.fillRect(f.x, f.y + f.h + 2, ctx.measureText(label).width + 8, 16);
+    ctx.fillStyle = f.pid ? "#3DDC97" : "#F2F5F7"; ctx.fillText(label, f.x + 4, f.y + f.h + 14);
   }
 }
 
