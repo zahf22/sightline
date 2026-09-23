@@ -28,6 +28,7 @@
   #stage { position: fixed; inset: 0; }
   video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
   video { object-fit: cover; }
+  video.mirror { transform: scaleX(-1); }
 
   .hud {
     position: fixed; inset: 0; pointer-events: none; display: none;
@@ -44,6 +45,7 @@
   #status { font-size: 13px; color: var(--muted); text-align: center; line-height: 1.35; }
   #status b { color: var(--ink); }
   #status .warn { color: var(--amber); }
+  .tools { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
   .btn {
     pointer-events: auto; border: 0; font-family: inherit; color: var(--ink);
     background: var(--panel); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-weight: 500;
@@ -85,6 +87,23 @@
   #dead b { font-size: 34px; }
   #dead span { color: var(--muted); font-size: 16px; }
 
+  /* Face scan */
+  #enroll {
+    position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: space-between;
+    padding: calc(env(safe-area-inset-top, 0px) + 24px) 24px calc(env(safe-area-inset-bottom, 0px) + 28px);
+  }
+  #enroll .guide {
+    width: min(62vw, 300px); aspect-ratio: 3 / 4; border-radius: 50%;
+    border: 3px dashed rgba(255,255,255,0.8); box-shadow: 0 0 0 100vmax rgba(14,26,43,0.55);
+    margin: auto 0;
+  }
+  #enroll .guide.good { border-color: var(--ok); border-style: solid; }
+  #enroll h2 { font-size: 26px; font-weight: 700; text-align: center; position: relative; }
+  #enroll p { color: var(--ink); font-size: 15px; text-align: center; line-height: 1.45; max-width: 360px; position: relative; }
+  #enrollMsg { min-height: 1.4em; margin-top: 8px; }
+  #enrollMsg.err { color: var(--hit); }
+  .enroll-foot { width: 100%; max-width: 420px; position: relative; }
+
   /* Lobby */
   #start {
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; overflow-y: auto;
@@ -114,6 +133,7 @@
   .primary:focus-visible, .secondary:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
   #msg { margin-top: 14px; font-size: 14px; color: var(--muted); min-height: 1.4em; line-height: 1.45; }
   #msg.err { color: var(--hit); }
+  .fine { font-size: 13px !important; margin-top: 16px; }
   @media (prefers-reduced-motion: reduce) { #banner, #hurt, .hpbar i { transition: none; } }
 </style>
 </head>
@@ -131,7 +151,10 @@
       <div class="row" style="margin: 6px 0 0"><span>Eliminations</span><b id="kills">0</b></div>
     </div>
     <div id="status" class="chip">Starting…</div>
-    <button class="btn" id="toggleBoxes" type="button">Hide hitboxes</button>
+    <div class="tools">
+      <button class="btn" id="toggleBoxes" type="button">Hide hitboxes</button>
+      <button class="btn" id="leave" type="button">Leave</button>
+    </div>
   </div>
   <div class="bottom">
     <div class="ammo">
@@ -146,10 +169,20 @@
 <div id="dead"><b>You're out</b><span id="deadText">Back in 3s</span></div>
 <div id="banner"></div>
 
+<div id="enroll">
+  <h2>Scan your face</h2>
+  <div class="guide" id="guide"></div>
+  <div class="enroll-foot">
+    <p>Hold the phone at arm's length, face a light, and fit your face in the oval. Other players' phones use this scan to show your name.</p>
+    <p id="enrollMsg" role="status"></p>
+    <button id="scan" class="primary" type="button">Scan my face</button>
+  </div>
+</div>
+
 <div id="start">
   <div class="card">
     <h1>Sightline<br><i>AR tag</i></h1>
-    <p>Everyone joins the same room code on their own phone. Only players in your room get nametags and can be hit, matched by GPS and compass. Play outdoors, spread out at least 10 meters.</p>
+    <p>Everyone joins the same room code on their own phone and scans their face. Up close, players are recognized by face; farther away outdoors, GPS and compass help too. Only players in your room get nametags and can be hit.</p>
     <label for="name">Your name</label>
     <input id="name" maxlength="16" autocomplete="nickname" placeholder="e.g. Cesar">
     <label for="room">Room code</label>
@@ -157,13 +190,12 @@
     <button id="join" class="primary" type="button">Join match</button>
     <button id="practice" class="secondary" type="button">Practice offline (everyone is a target)</button>
     <div id="msg" role="status"></div>
+    <p class="fine">Your face scan is saved as numbers, not a photo, and is deleted along with your location when you leave the match or close the page.</p>
   </div>
 </div>
 
 <script type="module">
-/* =====================================================================
-   1. PASTE YOUR FIREBASE CONFIG HERE (see setup steps)
-   ===================================================================== */
+/* ---------- Firebase config ---------- */
 const firebaseConfig = {
   apiKey: "AIzaSyCpR0i-hWnJzuZxVk8IcDa0haMDrBOXDEE",
   authDomain: "sightline-56bc7.firebaseapp.com",
@@ -178,30 +210,42 @@ const ONLINE_READY = !!firebaseConfig.databaseURL && !firebaseConfig.databaseURL
 /* ---------- tuning ---------- */
 const MP_BASE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+const FACEAPI_BASE = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15";
 const FB_BASE = "https://www.gstatic.com/firebasejs/10.12.2/";
 const DAMAGE = { head: 50, torso: 25, limb: 12 };
 const ZONE_RANK = { head: 3, torso: 2, limb: 1 };
 const MAX_HP = 100, MAG_SIZE = 12, FIRE_DELAY = 180, RELOAD_TIME = 1500, RESPAWN_TIME = 3000;
 const FORGET_AFTER = 2000;
+const FACE_MATCH = 0.55;      // lower = stricter face matching
+const FACE_EVERY = 350;       // ms between face recognition passes
+const FACE_FRESH = 600;       // ms a face result stays usable
+const MISSES_TO_DROP = 3;     // unmatched face passes before a nametag is removed
 const CAMERA_LONG_FOV = 65;   // degrees across the long side of a typical phone main camera
-const COMPASS_TOL = 15;       // degrees of compass error we allow
-const STALE_POS = 15000;      // ms before another player's GPS is considered too old
+const COMPASS_TOL = 15;       // degrees of compass error allowed
+const STALE_POS = 15000;      // ms before another player's GPS is too old to use
+const GPS_MIN_DIST = 8;       // m; closer than this, GPS is too rough, so only faces identify players
+const FACE_OVERRIDE = 3000;   // ms after a face is seen NOT matching anyone, GPS can't label that person
 
 const $ = (id) => document.getElementById(id);
 const video = $("cam"), canvas = $("fx"), ctx = canvas.getContext("2d"), msg = $("msg");
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let mode = null;              // "online" | "practice"
-let landmarker = null;
+let landmarker = null, faceapi = null;
+let stream = null;
 let W = 0, H = 0, DPR = 1, M = { ox: 0, oy: 0, dw: 1, dh: 1 };
 let lastVideoTime = -1, tracks = [], nextTrackId = 1;
-let showBoxes = true, ammo = MAG_SIZE, reloading = false, lastShot = 0;
-let practiceKills = 0;
+let showBoxes = true, ammo = MAG_SIZE, reloading = false, lastShot = 0, practiceKills = 0;
 let flashAt = -1e9, hitMarkAt = -1e9, hitMarkHead = false, popups = [], hover = null, audio = null;
+
+// face state
+let faceBusy = false, lastFaceRun = 0, lastFaces = [], lastFacesAt = -1e9, faceRunId = 0;
+let faceDesc = {};            // pid -> Float32Array(128)
 
 // online state
 let fb = null, db = null, roomPath = "", meRef = null, serverOffset = 0;
 let players = {}, prevMyHp = null, respawnSent = false;
-let myPos = null, lastPosPush = 0, heading = null, candInfo = {};
+let myPos = null, lastPosPush = 0, heading = null, gpsError = "", candInfo = {};
 let myId = null;
 try { myId = localStorage.getItem("sightline-id"); } catch {}
 if (!myId) { myId = Math.random().toString(36).slice(2, 10); try { localStorage.setItem("sightline-id", myId); } catch {} }
@@ -224,34 +268,31 @@ async function begin(which) {
     if (!name) { setMsg("Enter your name so other players can see it.", true); $("name").focus(); return; }
     if (room.length < 3) { setMsg("Room codes need at least 3 letters or numbers.", true); $("room").focus(); return; }
   }
-  if (!window.isSecureContext) { setMsg("Camera and GPS need a secure (https) page, like GitHub Pages.", true); return; }
+  if (!window.isSecureContext) { setMsg("The camera needs a secure (https) page, like GitHub Pages.", true); return; }
   try { localStorage.setItem("sightline-name", name); } catch {}
   $("join").disabled = $("practice").disabled = true;
   mode = which;
   initAudio();
 
-  try {
-    setMsg("Opening back camera…");
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }
-    });
-    video.srcObject = stream; await video.play();
-  } catch (e) {
-    return fail(e.name === "NotAllowedError"
-      ? "Camera access was blocked. Allow the camera for this site in Chrome's site settings, then try again."
-      : "Couldn't open the camera: " + e.message);
-  }
-
   if (mode === "online") {
-    try { await startSensors(); } catch (e) { return fail(e.message); }
     try {
       setMsg("Joining room " + room + "…");
       await joinRoom(name, room);
     } catch (e) { return fail("Couldn't connect to the game server: " + e.message); }
+    await startSensors();
+    try {
+      setMsg("Loading face recognition (first time takes a few seconds)…");
+      await loadFaceApi();
+    } catch (e) { return fail("Couldn't load face recognition. Check your connection and reload. (" + e.message + ")"); }
+    try { await openCamera("user"); } catch (e) { return fail(cameraError(e)); }
+    await enroll();
   }
 
+  try { await openCamera("environment"); } catch (e) { return fail(cameraError(e)); }
+
   try {
-    setMsg("Loading the person detector (first time takes a few seconds)…");
+    setMsg("Loading the person detector…");
+    $("start").style.display = "flex";
     const { FilesetResolver, PoseLandmarker } = await import(`${MP_BASE}/vision_bundle.mjs`);
     const fileset = await FilesetResolver.forVisionTasks(`${MP_BASE}/wasm`);
     const opts = (delegate) => ({
@@ -269,33 +310,45 @@ async function begin(which) {
   resize();
   requestAnimationFrame(loop);
 }
-function fail(text) { $("join").disabled = $("practice").disabled = false; setMsg(text, true); }
+function fail(text) {
+  $("start").style.display = "flex"; $("enroll").style.display = "none";
+  $("join").disabled = $("practice").disabled = false; setMsg(text, true);
+}
+function cameraError(e) {
+  return e.name === "NotAllowedError"
+    ? "Camera access was blocked. Allow the camera for this site in Chrome's site settings, then try again."
+    : "Couldn't open the camera: " + e.message;
+}
 
-/* ---------- sensors: GPS + compass ---------- */
+async function openCamera(facing) {
+  if (stream) stream.getTracks().forEach((t) => t.stop());
+  stream = await navigator.mediaDevices.getUserMedia({
+    audio: false, video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } }
+  });
+  video.srcObject = stream;
+  video.classList.toggle("mirror", facing === "user");
+  await video.play();
+  lastVideoTime = -1;
+}
+
+/* ---------- GPS + compass (helps at longer range; optional) ---------- */
 async function startSensors() {
-  if (!navigator.geolocation) throw new Error("This browser can't read GPS.");
-  setMsg("Waiting for GPS (allow location access)…");
-  await new Promise((resolve, reject) => {
-    let first = true;
+  if (navigator.geolocation) {
     navigator.geolocation.watchPosition((p) => {
       myPos = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy };
+      gpsError = "";
       pushPosition();
-      if (first) { first = false; resolve(); }
     }, (err) => {
-      if (first) reject(new Error(err.code === 1
-        ? "Location access was blocked. Allow location for this site in Chrome's site settings."
-        : "Couldn't get a GPS fix. Go outdoors and try again."));
+      gpsError = err.code === 1 ? "Location blocked" : "No GPS fix";
     }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 20000 });
-  });
-
+  } else gpsError = "No GPS";
   if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
     try { await DeviceOrientationEvent.requestPermission(); } catch {}
   }
   if ("ondeviceorientationabsolute" in window) window.addEventListener("deviceorientationabsolute", onOrient);
   else window.addEventListener("deviceorientation", onOrient);
 }
-
-// Direction the BACK CAMERA points, in degrees clockwise from north (W3C DeviceOrientation spec math).
+// Direction the BACK CAMERA points, degrees clockwise from north (W3C DeviceOrientation spec math).
 function cameraHeading(alpha, beta, gamma) {
   const r = Math.PI / 180, x = beta * r, y = gamma * r, z = alpha * r;
   const cX = Math.cos(x), cY = Math.cos(y), cZ = Math.cos(z), sX = Math.sin(x), sY = Math.sin(y), sZ = Math.sin(z);
@@ -312,18 +365,22 @@ function onOrient(e) {
   else return;
   if (!isFinite(h)) return;
   if (heading == null) { heading = h; return; }
-  // smooth on the circle
   const a = heading * Math.PI / 180, b = h * Math.PI / 180, k = 0.25;
   const sx = Math.sin(a) * (1 - k) + Math.sin(b) * k, cx = Math.cos(a) * (1 - k) + Math.cos(b) * k;
   heading = (Math.atan2(sx, cx) * 180 / Math.PI + 360) % 360;
 }
-
-/* ---------- geo math ---------- */
+function pushPosition() {
+  if (!meRef || !myPos) return;
+  const t = performance.now();
+  if (t - lastPosPush < 1000) return;
+  lastPosPush = t;
+  fb.update(meRef, { lat: myPos.lat, lng: myPos.lng, acc: myPos.acc, updated: fb.serverTimestamp() }).catch(() => {});
+}
 const toRad = (d) => d * Math.PI / 180, toDeg = (r) => r * 180 / Math.PI;
 function geoDistance(a, b) {
   const R = 6371000, dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
-  const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(s));
+  const q = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(q));
 }
 function geoBearing(a, b) {
   const y = Math.sin(toRad(b.lng - a.lng)) * Math.cos(toRad(b.lat));
@@ -331,14 +388,127 @@ function geoBearing(a, b) {
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 const angDiff = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
-
-// Horizontal angle (degrees, right = positive) of a screen x position from the camera's center line.
 function screenAngle(x) {
   const vw = video.videoWidth || 1, vh = video.videoHeight || 1;
   const half = toRad(CAMERA_LONG_FOV / 2);
   const tanH = vw >= vh ? Math.tan(half) : Math.tan(half) * vw / vh;
-  const nx = (x - M.ox) / M.dw;
-  return toDeg(Math.atan((nx - 0.5) * 2 * tanH));
+  return toDeg(Math.atan((((x - M.ox) / M.dw) - 0.5) * 2 * tanH));
+}
+
+// Labels people the face check hasn't identified, using where each player's phone says they are.
+function matchByGps() {
+  candInfo = {};
+  if (mode !== "online" || !myPos) return;
+  const t = performance.now();
+  const faceHeld = new Set(tracks.filter((tr) => tr.body && tr.idSource === "face").map((tr) => tr.pid));
+  const cands = [];
+  for (const [pid, p] of Object.entries(players)) {
+    if (pid === myId || p.lat == null || now() - (p.updated || 0) > STALE_POS) continue;
+    const d = geoDistance(myPos, p), b = geoBearing(myPos, p);
+    const tol = Math.min(60, COMPASS_TOL + toDeg(Math.atan2((myPos.acc || 10) + (p.acc || 10), Math.max(d, 1))));
+    const c = { pid, d, b, tol };
+    candInfo[pid] = c;
+    if (!faceHeld.has(pid) && d >= GPS_MIN_DIST) cands.push(c);
+  }
+  if (heading == null) return;
+  const open = tracks.filter((tr) => tr.body && tr.idSource !== "face" && t - tr.faceRejectAt > FACE_OVERRIDE);
+  for (const tr of open) tr.bearing = (heading + screenAngle(tr.body.center.x) + 360) % 360;
+  const taken = new Set();
+  for (const tr of open) {
+    const c = tr.pid && cands.find((c) => c.pid === tr.pid);
+    if (c && !taken.has(c.pid) && angDiff(tr.bearing, c.b) <= c.tol * 1.3) taken.add(c.pid);
+    else if (tr.idSource === "gps") { tr.pid = null; tr.idSource = null; }
+  }
+  const pairs = [];
+  for (const tr of open) if (!tr.pid) for (const c of cands) if (!taken.has(c.pid)) {
+    const df = angDiff(tr.bearing, c.b);
+    if (df <= c.tol) pairs.push({ tr, c, score: df / c.tol });
+  }
+  pairs.sort((a, b) => a.score - b.score);
+  for (const p of pairs) if (!p.tr.pid && !taken.has(p.c.pid)) { p.tr.pid = p.c.pid; p.tr.idSource = "gps"; taken.add(p.c.pid); }
+}
+
+/* ---------- face recognition ---------- */
+async function loadFaceApi() {
+  faceapi = await import(`${FACEAPI_BASE}/dist/face-api.esm.js`);
+  try { await faceapi.tf.setBackend("webgl"); } catch {}
+  await faceapi.tf.ready();
+  const uri = `${FACEAPI_BASE}/model`;
+  await Promise.all([
+    faceapi.nets.tinyFaceDetector.loadFromUri(uri),
+    faceapi.nets.faceLandmark68TinyNet.loadFromUri(uri),
+    faceapi.nets.faceRecognitionNet.loadFromUri(uri)
+  ]);
+}
+const faceOpts = (size) => new faceapi.TinyFaceDetectorOptions({ inputSize: size, scoreThreshold: 0.45 });
+
+function setEnrollMsg(text, isErr = false) { const el = $("enrollMsg"); el.textContent = text; el.classList.toggle("err", isErr); }
+
+function enroll() {
+  $("start").style.display = "none";
+  $("enroll").style.display = "flex";
+  setEnrollMsg("");
+  return new Promise((resolve) => {
+    $("scan").disabled = false;
+    $("scan").onclick = async () => {
+      $("scan").disabled = true;
+      setEnrollMsg("Hold still…");
+      const samples = [];
+      for (let i = 0; i < 6 && samples.length < 3; i++) {
+        const r = await faceapi.detectSingleFace(video, faceOpts(416)).withFaceLandmarks(true).withFaceDescriptor();
+        if (r) { samples.push(r.descriptor); $("guide").classList.add("good"); }
+        await sleep(250);
+      }
+      $("guide").classList.remove("good");
+      if (samples.length < 2) {
+        setEnrollMsg("No face found. Hold the phone at arm's length, face a light, and try again.", true);
+        $("scan").disabled = false;
+        return;
+      }
+      const avg = new Array(128).fill(0);
+      for (const s of samples) for (let i = 0; i < 128; i++) avg[i] += s[i] / samples.length;
+      try {
+        await fb.update(meRef, { face: avg.map((v) => Math.round(v * 10000) / 10000) });
+      } catch (e) {
+        setEnrollMsg("Couldn't save your scan: " + e.message, true);
+        $("scan").disabled = false;
+        return;
+      }
+      setEnrollMsg("Done. Switching to the back camera…");
+      await sleep(400);
+      $("enroll").style.display = "none";
+      resolve();
+    };
+  });
+}
+
+// Runs face recognition on the back camera and records who each face belongs to.
+async function runFaces() {
+  faceBusy = true; lastFaceRun = performance.now();
+  try {
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw) return;
+    const res = await faceapi.detectAllFaces(video, faceOpts(320)).withFaceLandmarks(true).withFaceDescriptors();
+    const runId = ++faceRunId;
+    const faces = res.map((r) => {
+      const b = r.detection.box;
+      const x = M.ox + (b.x / vw) * M.dw, y = M.oy + (b.y / vh) * M.dh;
+      const w = (b.width / vw) * M.dw, h = (b.height / vh) * M.dh;
+      return { x, y, w, h, cx: x + w / 2, cy: y + h / 2, desc: r.descriptor, pid: null, runId };
+    });
+    const pairs = [];
+    for (const f of faces) for (const [pid, d] of Object.entries(faceDesc)) {
+      if (pid === myId) continue;
+      const dd = faceapi.euclideanDistance(f.desc, d);
+      if (dd < FACE_MATCH) pairs.push({ f, pid, dd });
+    }
+    pairs.sort((a, b) => a.dd - b.dd);
+    const used = new Set();
+    for (const p of pairs) if (!p.f.pid && !used.has(p.pid)) { p.f.pid = p.pid; used.add(p.pid); }
+    lastFaces = faces; lastFacesAt = performance.now();
+  } catch (e) {
+    console.warn("face pass failed", e);
+  } finally { faceBusy = false; }
 }
 
 /* ---------- Firebase ---------- */
@@ -349,25 +519,20 @@ async function joinRoom(name, room) {
   roomPath = `rooms/${room}`;
   meRef = fb.ref(db, `${roomPath}/players/${myId}`);
   fb.onValue(fb.ref(db, ".info/serverTimeOffset"), (s) => { serverOffset = s.val() || 0; });
-  await fb.set(meRef, {
-    name, hp: MAX_HP, kills: 0, deadUntil: 0,
-    lat: myPos?.lat ?? null, lng: myPos?.lng ?? null, acc: myPos?.acc ?? null, updated: fb.serverTimestamp()
-  });
-  fb.onDisconnect(meRef).remove();
+  await fb.set(meRef, { name, hp: MAX_HP, kills: 0, deadUntil: 0, joined: fb.serverTimestamp() });
+  fb.onDisconnect(meRef).remove();   // removes your face scan when you close the page
   fb.onValue(fb.ref(db, `${roomPath}/players`), (s) => { players = s.val() || {}; onPlayers(); });
   const evq = fb.query(fb.ref(db, `${roomPath}/events`), fb.orderByChild("t"), fb.startAt(Date.now() - 2000));
   fb.onChildAdded(evq, (s) => onEvent(s.val()));
 }
 
-function pushPosition() {
-  if (!meRef || !myPos) return;
-  const t = performance.now();
-  if (t - lastPosPush < 1000) return;
-  lastPosPush = t;
-  fb.update(meRef, { lat: myPos.lat, lng: myPos.lng, acc: myPos.acc, updated: fb.serverTimestamp() }).catch(() => {});
-}
-
 function onPlayers() {
+  const next = {};
+  for (const [pid, p] of Object.entries(players)) {
+    if (Array.isArray(p.face) && p.face.length === 128) next[pid] = faceDesc[pid] && sameFace(faceDesc[pid], p.face) ? faceDesc[pid] : new Float32Array(p.face);
+  }
+  faceDesc = next;
+
   const me = players[myId];
   if (!me) return;
   if (prevMyHp != null && me.hp < prevMyHp) {
@@ -380,6 +545,7 @@ function onPlayers() {
   setMyHp(me.hp);
   $("kills").textContent = me.kills || 0;
 }
+const sameFace = (a, b) => a.length === b.length && a[0] === Math.fround(b[0]) && a[127] === Math.fround(b[127]);
 
 function onEvent(ev) {
   if (!ev || ev.type !== "kill" || now() - (ev.t || 0) > 6000) return;
@@ -390,7 +556,7 @@ function onEvent(ev) {
 async function sendHit(pid, zone) {
   const dmg = DAMAGE[zone];
   const res = await fb.runTransaction(fb.ref(db, `${roomPath}/players/${pid}`), (p) => {
-    if (!p || p.hp <= 0) return;           // abort: gone or already out
+    if (!p || p.hp <= 0) return;
     p.hp = Math.max(0, p.hp - dmg);
     p.lastHitBy = myId;
     if (p.hp === 0) p.deadUntil = now() + RESPAWN_TIME;
@@ -420,6 +586,11 @@ $("fire").addEventListener("pointerdown", (e) => { e.stopPropagation(); fire(); 
 $("reload").addEventListener("click", startReload);
 $("toggleBoxes").addEventListener("click", () => {
   showBoxes = !showBoxes; $("toggleBoxes").textContent = showBoxes ? "Hide hitboxes" : "Show hitboxes";
+});
+$("leave").addEventListener("click", async () => {
+  $("leave").disabled = true;
+  try { if (meRef) await fb.remove(meRef); } catch {}
+  location.reload();
 });
 
 /* ---------- body hitboxes ---------- */
@@ -462,7 +633,34 @@ function buildBody(lms) {
   for (const [a, b] of ARMS) if (P[a].v > 0.4 && P[b].v > 0.4) limbs.push({ a: P[a], b: P[b], r: s * 0.14 });
   for (const [a, b] of LEGS) if (P[a].v > 0.4 && P[b].v > 0.4) limbs.push({ a: P[a], b: P[b], r: s * 0.18 });
   const anchor = head ? { x: head.x, y: head.y - head.r } : torso ? { x: sh.x, y: sh.y - s * 0.6 } : null;
-  return anchor ? { head, torso, limbs, s, anchor, center: head || sh } : null;
+  return anchor ? { head, torso, limbs, s, anchor, center: head || sh, face: null } : null;
+}
+
+// Very close up, the pose model may miss the body; build head + chest hitboxes from the face alone.
+function faceOnlyBody(f) {
+  const r = Math.max(f.w, f.h) * 0.6;
+  const head = { x: f.cx, y: f.cy, r };
+  const top = f.y + f.h + f.w * 0.1, tw = f.w * 2.4, th = f.w * 2.8;
+  const torso = [{ x: f.cx - tw / 2, y: top }, { x: f.cx + tw / 2, y: top }, { x: f.cx + tw / 2, y: top + th }, { x: f.cx - tw / 2, y: top + th }];
+  return { head, torso, limbs: [], s: f.w * 2, anchor: { x: f.cx, y: f.cy - r }, center: head, face: f };
+}
+
+function buildBodies(poseLandmarks) {
+  const bodies = poseLandmarks.map(buildBody).filter(Boolean);
+  if (mode !== "online") return bodies;
+  const fresh = performance.now() - lastFacesAt < FACE_FRESH ? lastFaces : [];
+  for (const f of fresh) {
+    let best = null, bd = Infinity;
+    for (const b of bodies) {
+      const c = b.head || b.center;
+      const d = Math.hypot(c.x - f.cx, c.y - f.cy);
+      const lim = Math.max(f.w, b.head ? b.head.r * 1.6 : b.s * 0.6);
+      if (d < lim && d < bd) { bd = d; best = b; }
+    }
+    if (best) { if (!best.face || f.w > best.face.w) best.face = f; }
+    else bodies.push(faceOnlyBody(f));
+  }
+  return bodies;
 }
 function hitTest(body, x, y) {
   if (body.head && Math.hypot(x - body.head.x, y - body.head.y) <= body.head.r) return "head";
@@ -471,7 +669,7 @@ function hitTest(body, x, y) {
   return null;
 }
 
-/* ---------- tracking bodies between frames ---------- */
+/* ---------- tracking bodies between frames (names stick to people between face scans) ---------- */
 function track(bodies, t) {
   const free = new Set(tracks);
   for (const tr of tracks) tr.body = null;
@@ -481,45 +679,28 @@ function track(bodies, t) {
       const d = Math.hypot(tr.x - b.center.x, tr.y - b.center.y);
       if (d < bestD) { bestD = d; best = tr; }
     }
-    if (!best) { best = { id: nextTrackId++, hp: MAX_HP, deadUntil: 0, pid: null }; tracks.push(best); }
+    if (!best) { best = { id: nextTrackId++, hp: MAX_HP, deadUntil: 0, pid: null, idSource: null, faceChecked: false, faceRejectAt: -1e9, misses: 0, faceRun: 0 }; tracks.push(best); }
     else free.delete(best);
     best.body = b; best.x = b.center.x; best.y = b.center.y; best.lastSeen = t;
+    applyFace(best, b.face);
   }
   tracks = tracks.filter((tr) => t - tr.lastSeen < FORGET_AFTER);
   for (const tr of tracks) if (tr.hp <= 0 && t >= tr.deadUntil) tr.hp = MAX_HP;   // practice respawn
 }
-
-/* ---------- GPS + compass matching: which body is which player ---------- */
-function matchPlayers() {
-  candInfo = {};
-  if (mode !== "online" || heading == null || !myPos) { for (const tr of tracks) tr.pid = null; return; }
-  const cands = [];
-  for (const [pid, p] of Object.entries(players)) {
-    if (pid === myId || p.lat == null || now() - (p.updated || 0) > STALE_POS) continue;
-    const d = geoDistance(myPos, p), b = geoBearing(myPos, p);
-    const tol = Math.min(60, COMPASS_TOL + toDeg(Math.atan2((myPos.acc || 10) + (p.acc || 10), Math.max(d, 1))));
-    const c = { pid, d, b, tol };
-    cands.push(c); candInfo[pid] = c;
+function applyFace(tr, f) {
+  if (!f || f.runId === tr.faceRun) return;      // only once per face pass
+  tr.faceRun = f.runId; tr.faceChecked = true;
+  if (f.pid) {
+    for (const other of tracks) if (other !== tr && other.pid === f.pid) { other.pid = null; other.idSource = null; }
+    tr.pid = f.pid; tr.idSource = "face"; tr.misses = 0;
+  } else {
+    tr.misses++;
+    tr.faceRejectAt = performance.now();
+    // a clear face that matches nobody overrides a GPS guess; a face-confirmed name needs a few misses to drop
+    if (!tr.pid || tr.idSource === "gps" || tr.misses >= MISSES_TO_DROP) { tr.pid = null; tr.idSource = null; }
   }
-  const visible = tracks.filter((tr) => tr.body);
-  for (const tr of visible) tr.bearing = (heading + screenAngle(tr.body.center.x) + 360) % 360;
-
-  const taken = new Set();
-  for (const tr of visible) {           // keep existing matches if still plausible (less flicker)
-    const c = tr.pid && candInfo[tr.pid];
-    if (c && !taken.has(c.pid) && angDiff(tr.bearing, c.b) <= c.tol * 1.3) taken.add(c.pid);
-    else tr.pid = null;
-  }
-  const pairs = [];
-  for (const tr of visible) if (!tr.pid) for (const c of cands) if (!taken.has(c.pid)) {
-    const df = angDiff(tr.bearing, c.b);
-    if (df <= c.tol) pairs.push({ tr, c, score: df / c.tol });
-  }
-  pairs.sort((a, b) => a.score - b.score);
-  for (const p of pairs) if (!p.tr.pid && !taken.has(p.c.pid)) { p.tr.pid = p.c.pid; taken.add(p.c.pid); }
 }
 
-// What we know about the player on a track, or null if it's not a player in this match.
 function info(tr) {
   if (mode === "practice") return { name: `Player ${tr.id}`, hp: tr.hp, dead: tr.hp <= 0, deadUntil: tr.deadUntil, clock: performance.now() };
   const p = tr.pid && players[tr.pid];
@@ -599,12 +780,13 @@ function loop() {
   requestAnimationFrame(loop);
   const t = performance.now();
   updateMapper();
+  if (mode === "online" && !faceBusy && t - lastFaceRun > FACE_EVERY) runFaces();
   if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
     lastVideoTime = video.currentTime;
     const res = landmarker.detectForVideo(video, t);
-    track((res.landmarks || []).map(buildBody).filter(Boolean), t);
+    track(buildBodies(res.landmarks || []), t);
   }
-  matchPlayers();
+  matchByGps();
   hover = findHover();
 
   if (mode === "online") {
@@ -628,12 +810,12 @@ function updateStatus() {
     const n = tracks.filter((tr) => tr.body).length;
     html = n ? `<b>${n}</b> ${n === 1 ? "person" : "people"} in view` : "Looking for people…";
   } else {
-    const others = Object.keys(players).filter((p) => p !== myId).length;
+    const others = Object.keys(players).filter((p) => p !== myId);
+    const unscanned = others.filter((p) => !faceDesc[p]).length;
     const room = roomPath.split("/")[1];
-    const gps = myPos ? `GPS ±${Math.round(myPos.acc)} m` : "No GPS";
-    const warn = heading == null ? `<br><span class="warn">No compass on this phone, can't match players</span>`
-      : myPos && myPos.acc > 25 ? `<br><span class="warn">Weak GPS, move to open sky</span>` : "";
-    html = `Room <b>${room}</b>, ${others} other ${others === 1 ? "player" : "players"}<br>${gps}${warn}`;
+    html = `Room <b>${room}</b>, ${others.length} other ${others.length === 1 ? "player" : "players"}`;
+    html += `<br>${myPos ? `GPS ±${Math.round(myPos.acc)} m` : gpsError || "Waiting for GPS"}${heading == null ? ", no compass" : ""}`;
+    if (unscanned) html += `<br><span class="warn">${unscanned} still scanning their face</span>`;
   }
   if (html !== lastStatus) { $("status").innerHTML = html; lastStatus = html; }
 }
@@ -644,7 +826,7 @@ function draw(t) {
   for (const tr of tracks) {
     if (!tr.body) continue;
     const i = info(tr), b = tr.body;
-    if (!i) { drawBystander(b); continue; }
+    if (!i) { drawUnknown(b, tr.faceChecked ? "Not in match" : "Show face to identify"); continue; }
     if (showBoxes && !i.dead) drawHitboxes(tr, b);
     drawTag(b, i);
   }
@@ -663,11 +845,32 @@ function draw(t) {
   }
 }
 
-function drawBystander(b) {
-  if (!showBoxes) return;
-  ctx.font = "500 12px 'Chakra Petch', system-ui, sans-serif"; ctx.textAlign = "center";
-  ctx.fillStyle = "rgba(242,245,247,0.55)";
-  ctx.fillText("Not in match", b.anchor.x, b.anchor.y - 8);
+// Mini radar: you in the middle, the top is where your camera points.
+function drawRadar() {
+  const r = 52, cx = W / 2, cy = H - r - 40;
+  ctx.fillStyle = "rgba(14,26,43,0.62)"; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.18)"; ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = "#F2F5F7"; ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2); ctx.fill();
+  if (heading == null || !myPos) return;
+  const a1 = toRad(screenAngle(0)), a2 = toRad(screenAngle(W));
+  ctx.fillStyle = "rgba(255,176,32,0.14)"; ctx.beginPath(); ctx.moveTo(cx, cy);
+  ctx.arc(cx, cy, r, -Math.PI / 2 + a1, -Math.PI / 2 + a2); ctx.closePath(); ctx.fill();
+  const cs = Object.values(candInfo);
+  const range = Math.max(30, ...cs.map((c) => c.d * 1.15));
+  for (const c of cs) {
+    const rel = toRad(c.b - heading), rr = Math.min(1, c.d / range) * (r - 6);
+    ctx.fillStyle = players[c.pid]?.hp > 0 ? "#FFB020" : "#9FB0C2";
+    ctx.beginPath(); ctx.arc(cx + Math.sin(rel) * rr, cy - Math.cos(rel) * rr, 4, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.font = "500 11px 'Chakra Petch', system-ui, sans-serif"; ctx.textAlign = "center"; ctx.fillStyle = "#9FB0C2";
+  ctx.fillText(`${Math.round(range)} m`, cx, cy + r - 6);
+}
+
+function drawUnknown(b, text) {
+  ctx.font = "500 13px 'Chakra Petch', system-ui, sans-serif"; ctx.textAlign = "center";
+  const w = ctx.measureText(text).width + 16;
+  ctx.fillStyle = "rgba(14,26,43,0.6)"; roundRect(b.anchor.x - w / 2, b.anchor.y - 30, w, 22, 6); ctx.fill();
+  ctx.fillStyle = "rgba(242,245,247,0.75)"; ctx.fillText(text, b.anchor.x, b.anchor.y - 15);
 }
 
 function drawHitboxes(tr, b) {
@@ -694,13 +897,12 @@ function drawHitboxes(tr, b) {
 
 function drawTag(b, i) {
   ctx.font = "700 14px 'Chakra Petch', system-ui, sans-serif";
-  const sub = i.dead ? `Out ${Math.max(0, Math.ceil((i.deadUntil - i.clock) / 1000))}s`
-            : i.d != null ? `${Math.round(i.d)} m` : `${i.hp}`;
+  const sub = i.dead ? `Out ${Math.max(0, Math.ceil((i.deadUntil - i.clock) / 1000))}s` : i.d != null && i.d >= GPS_MIN_DIST ? `${Math.round(i.d)} m` : `${i.hp}`;
   const nameW = ctx.measureText(i.name).width;
   ctx.font = "500 12px 'Chakra Petch', system-ui, sans-serif";
   const subW = ctx.measureText(sub).width;
   const bw = Math.max(84, nameW + subW + 18), bh = 7;
-  const x = b.anchor.x - bw / 2, y = b.anchor.y - 16;
+  const x = Math.min(Math.max(b.anchor.x - bw / 2, 8), W - bw - 8), y = Math.max(b.anchor.y - 16, 110);
   ctx.fillStyle = "rgba(14,26,43,0.78)"; roundRect(x - 6, y - 22, bw + 12, bh + 30, 7); ctx.fill();
   ctx.textBaseline = "alphabetic";
   ctx.font = "700 14px 'Chakra Petch', system-ui, sans-serif"; ctx.textAlign = "left";
@@ -711,28 +913,6 @@ function drawTag(b, i) {
   const pct = i.hp / MAX_HP;
   ctx.fillStyle = pct > 0.5 ? "#3DDC97" : pct > 0.25 ? "#FFB020" : "#FF3B4E";
   ctx.fillRect(x, y, bw * pct, bh);
-}
-
-// Mini radar: you in the middle, the top is where your camera points.
-function drawRadar() {
-  const r = 52, cx = W / 2, cy = H - r - 40;
-  ctx.fillStyle = "rgba(14,26,43,0.62)"; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = "rgba(255,255,255,0.18)"; ctx.lineWidth = 1; ctx.stroke();
-  if (heading == null || !myPos) return;
-  // camera view wedge
-  const a1 = toRad(screenAngle(0)), a2 = toRad(screenAngle(W));
-  ctx.fillStyle = "rgba(255,176,32,0.14)"; ctx.beginPath(); ctx.moveTo(cx, cy);
-  ctx.arc(cx, cy, r, -Math.PI / 2 + a1, -Math.PI / 2 + a2); ctx.closePath(); ctx.fill();
-  const range = Math.max(30, ...Object.values(candInfo).map((c) => c.d * 1.15));
-  for (const c of Object.values(candInfo)) {
-    const rel = toRad(c.b - heading), rr = Math.min(1, c.d / range) * (r - 6);
-    const p = players[c.pid];
-    ctx.fillStyle = p?.hp > 0 ? "#FFB020" : "#9FB0C2";
-    ctx.beginPath(); ctx.arc(cx + Math.sin(rel) * rr, cy - Math.cos(rel) * rr, 4, 0, Math.PI * 2); ctx.fill();
-  }
-  ctx.fillStyle = "#F2F5F7"; ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2); ctx.fill();
-  ctx.font = "500 11px 'Chakra Petch', system-ui, sans-serif"; ctx.textAlign = "center"; ctx.fillStyle = "#9FB0C2";
-  ctx.fillText(`${Math.round(range)} m`, cx, cy + r - 6);
 }
 
 function drawCrosshair(t) {
